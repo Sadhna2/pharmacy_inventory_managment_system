@@ -1,0 +1,40 @@
+# Caddy serves the built React app and forwards API calls to the backend.
+#
+# The site address comes from $SITE_ADDRESS. Locally that is :80 (plain HTTP,
+# no certificate needed). In production it is set to the real hostname, and
+# Caddy fetches a Let's Encrypt certificate for it automatically — no certbot,
+# no renewal cron.
+{
+	# Hackathon deployment: no clustered storage, no admin API exposure.
+	admin off
+}
+
+{$SITE_ADDRESS::80} {
+	encode gzip zstd
+
+	# Anything under /api belongs to FastAPI. Because it is the same origin as
+	# the frontend, the browser sends no preflight and CORS never applies.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Swagger and the health endpoints live outside /api.
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+	handle /health/* {
+		reverse_proxy api:8000
+	}
+
+	# Everything else is the React bundle. try_files sends unknown paths to
+	# index.html so client-side routes like /stock survive a page refresh
+	# instead of 404-ing.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

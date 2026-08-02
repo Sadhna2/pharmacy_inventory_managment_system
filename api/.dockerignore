@@ -1,0 +1,15 @@
+# Everything here would be copied into the build context and shipped in the
+# image. The virtualenv and the local Postgres cluster are the big ones — both
+# are hundreds of MB and both are host-specific, so they would bloat the image
+# and break it at the same time.
+
+.venv/
+.pgdata/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Secrets never enter an image. Config arrives as environment variables.
+.env
+*.log
