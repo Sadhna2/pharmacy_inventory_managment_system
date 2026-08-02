@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens.
+
+   One restrained palette: a deep teal for actions, warm neutrals for surfaces,
+   and semantic colours reserved for stock states so they carry meaning rather
+   than decoration. Everything else is spacing and type.
+   --------------------------------------------------------------------------- */
+
+@theme {
+  --color-canvas: oklch(0.985 0.003 106);
+  --color-surface: oklch(1 0 0);
+  --color-muted: oklch(0.968 0.004 106);
+
+  --color-line: oklch(0.916 0.005 106);
+  --color-line-strong: oklch(0.86 0.006 106);
+
+  --color-ink: oklch(0.24 0.008 106);
+  --color-ink-soft: oklch(0.47 0.008 106);
+  --color-ink-faint: oklch(0.63 0.008 106);
+
+  --color-brand: oklch(0.52 0.096 192);
+  --color-brand-hover: oklch(0.46 0.098 192);
+  --color-brand-soft: oklch(0.96 0.021 192);
+  --color-brand-ring: oklch(0.52 0.096 192 / 0.32);
+
+  --color-ok: oklch(0.58 0.13 152);
+  --color-ok-soft: oklch(0.955 0.03 152);
+  --color-warn: oklch(0.72 0.15 74);
+  --color-warn-soft: oklch(0.965 0.04 82);
+  --color-danger: oklch(0.58 0.19 25);
+  --color-danger-soft: oklch(0.96 0.03 25);
+  --color-info: oklch(0.58 0.11 255);
+  --color-info-soft: oklch(0.96 0.025 255);
+
+  --radius-card: 0.75rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numbers must line up in columns — tabular figures everywhere. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  /* Quieter scrollbars on desktop; untouched on mobile. */
+  @media (pointer: fine) {
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-line-strong);
+      border-radius: 999px;
+      border: 3px solid var(--color-canvas);
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* Wide tables scroll inside their own container; the page never does. */
+  .scroll-x {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  /*
+   * Scrollable, but with no visible scrollbar.
+   *
+   * For the sidebar nav. The rail should read as a fixed panel, not as
+   * something that scrolls — but on a short laptop screen the lower items
+   * still have to be reachable, and clipping them outright would make parts
+   * of the app unreachable. So the overflow stays and only the chrome goes:
+   * it looks fixed, and it still works at 640px tall.
+   */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

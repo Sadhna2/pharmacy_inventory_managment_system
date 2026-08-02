@@ -1,0 +1,139 @@
+# Deploys main to the EC2 box.
+#
+# Images are built HERE, never on the server. The box has 2 GB and `vite build`
+# would exhaust it (ARCHITECTURE.md §14.4). The runner is ARM because the
+# instance is Graviton — native arm64 runners are free on public repos, and
+# they are roughly ten times faster than emulating arm64 on x86.
+#
+# Every image is tagged with the commit SHA, so a rollback is "deploy the
+# previous SHA" rather than "rebuild and hope".
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # lets you redeploy by hand from the Actions tab
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # never interrupt a deploy midway
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    name: Build and publish arm64 images
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # provided automatically
+
+      - name: Build and push API
+        uses: docker/build-push-action@v6
+        with:
+          context: ./api
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}-api:${{ github.sha }}
+            ${{ env.IMAGE_BASE }}-api:latest
+          # Layer cache lives in Actions, so an unchanged requirements.txt
+          # means pip install is skipped entirely on the next run.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_BASE }}-web:${{ github.sha }}
+            ${{ env.IMAGE_BASE }}-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    name: Roll out to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read      # the box pulls the images this token published
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy.pem
+          chmod 600 ~/.ssh/deploy.pem
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Ship compose files
+        run: |
+          scp -i ~/.ssh/deploy.pem docker-compose.yml docker-compose.prod.yml \
+            ec2-user@${{ secrets.EC2_HOST }}:~/
+
+      - name: Pull, migrate, restart
+        run: |
+          ssh -i ~/.ssh/deploy.pem ec2-user@${{ secrets.EC2_HOST }} bash -euo pipefail <<'REMOTE'
+            # A package published by GITHUB_TOKEN is private until someone makes
+            # it otherwise, so the box cannot pull anonymously. Authenticating
+            # is one line and does not care either way, which beats depending on
+            # a visibility setting nobody will remember is load-bearing.
+            echo '${{ secrets.GITHUB_TOKEN }}' \
+              | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+            export API_IMAGE="${{ env.IMAGE_BASE }}-api:${{ github.sha }}"
+            export WEB_IMAGE="${{ env.IMAGE_BASE }}-web:${{ github.sha }}"
+            # Persist the tags so a manual `docker compose up` on the box uses
+            # the same images CI deployed, rather than drifting to :latest.
+            # `sed -i` fails outright on a missing file, and on a first deploy
+            # there is no ~/.env yet.
+            touch ~/.env
+            sed -i '/^API_IMAGE=/d;/^WEB_IMAGE=/d' ~/.env
+            echo "API_IMAGE=$API_IMAGE" >> ~/.env
+            echo "WEB_IMAGE=$WEB_IMAGE" >> ~/.env
+
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            # `up` runs the migrate service first and waits for it to succeed,
+            # so the API never serves against a half-migrated schema.
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+            docker image prune -f
+          REMOTE
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              "https://${{ secrets.SITE_HOST }}/health/ready" || true)
+            echo "attempt $i -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 5
+          done
+          echo "::error::health check never returned 200 — deployment is unhealthy"
+          exit 1
+
+      - name: Report failure detail
+        if: failure()
+        run: |
+          ssh -i ~/.ssh/deploy.pem ec2-user@${{ secrets.EC2_HOST }} \
+            'docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=40'

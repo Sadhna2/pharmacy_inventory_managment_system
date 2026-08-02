@@ -1,0 +1,2121 @@
+<title>Pharmacy Inventory — The Complete Guide</title>
+
+<style>
+/* ============================================================ tokens ==== */
+/* A cool, clean neutral — not cream. The screenshots are near-white UI, and
+   a warm beige ground made them look grey and dirty by comparison. The accent
+   is the product's own teal, so the guide and the app read as one thing. */
+:root {
+  --paper:      #FAFBFB;
+  --card:       #FFFFFF;
+  --card-2:     #F2F5F5;
+  --ink:        #0E1719;
+  --ink-2:      #414D51;
+  --ink-3:      #6E7B7F;
+  --line:       #E3E8E8;
+  --line-2:     #CBD3D4;
+  --accent:     #0F766E;
+  --accent-ink: #0B5A54;
+  --accent-soft:#E4F1EF;
+  --amber:      #8A5D10;
+  --amber-soft: #FAF1DF;
+  --danger:     #9C3227;
+  --danger-soft:#FBEAE7;
+  --shadow:     0 1px 2px rgba(14,23,25,.05), 0 10px 28px -14px rgba(14,23,25,.20);
+
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, ui-serif, serif;
+  --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:      #0C1112;
+    --card:       #141B1C;
+    --card-2:     #1A2324;
+    --ink:        #E8EEEE;
+    --ink-2:      #AFBCBC;
+    --ink-3:      #7B8889;
+    --line:       #212B2C;
+    --line-2:     #2E3A3B;
+    --accent:     #4FBFAE;
+    --accent-ink: #85D9CB;
+    --accent-soft:#0F2723;
+    --amber:      #D5A85F;
+    --amber-soft: #241C0D;
+    --danger:     #E0857A;
+    --danger-soft:#261310;
+    --shadow:     0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="light"] {
+  --paper:#FAFBFB; --card:#FFFFFF; --card-2:#F2F5F5; --ink:#0E1719; --ink-2:#414D51;
+  --ink-3:#6E7B7F; --line:#E3E8E8; --line-2:#CBD3D4; --accent:#0F766E; --accent-ink:#0B5A54;
+  --accent-soft:#E4F1EF; --amber:#8A5D10; --amber-soft:#FAF1DF; --danger:#9C3227;
+  --danger-soft:#FBEAE7; --shadow:0 1px 2px rgba(14,23,25,.05), 0 10px 28px -14px rgba(14,23,25,.20);
+}
+:root[data-theme="dark"] {
+  --paper:#0C1112; --card:#141B1C; --card-2:#1A2324; --ink:#E8EEEE; --ink-2:#AFBCBC;
+  --ink-3:#7B8889; --line:#212B2C; --line-2:#2E3A3B; --accent:#4FBFAE; --accent-ink:#85D9CB;
+  --accent-soft:#0F2723; --amber:#D5A85F; --amber-soft:#241C0D; --danger:#E0857A;
+  --danger-soft:#261310; --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -16px rgba(0,0,0,.8);
+}
+
+/* ============================================================= base ===== */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; display: block; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px;
+}
+code, .mono { font-family: var(--mono); font-size: .88em; }
+/* No per-element max-widths anywhere. The reading column below is the only
+   thing that sets the measure, so every block lines up on the same two
+   edges — which is what stopped the page looking ragged when it stretched. */
+p { margin: 0 0 1em; }
+ul, ol { padding-left: 1.15em; }
+li { margin-bottom: .4em; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+
+/* ============================================================ shell ===== */
+/* ------------------------------------------------------------- layout --
+   The rail is fixed to the edge of the screen, not tucked inside a centred
+   container — a contents list that floats at an arbitrary margin reads as a
+   mistake. Everything else lives in `.page`, which is simply the space the
+   rail is not using, and holds one centred reading column.
+
+   Wide things (screenshots, tables, diagrams) break out of that column and
+   centre on the same axis. That is what keeps the page from falling apart
+   when it stretches: the text measure never changes, only the figures grow. */
+.page { margin-left: var(--rail-w); }
+.wrap {
+  max-width: 1128px;
+  margin: 0 auto;
+  padding: 0 44px 96px;
+}
+:root { --rail-w: 262px; }
+@media (max-width: 1080px) {
+  :root { --rail-w: 0px; }
+  .wrap { padding: 0 24px 72px; }
+}
+
+/* ------------------------------------------------------------ the rail --
+   Thirty entries do not fit a laptop window, so the rail scrolls inside
+   itself. Two things keep that from looking broken: it is tightened enough
+   to fit most windows outright, and the script below keeps the entry you
+   are reading in view — so the rail is never left stranded mid-list with
+   its own top cut off. */
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 262px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  background: var(--paper);
+  border-right: 1px solid var(--line);
+}
+@media (max-width: 1080px) { .rail { display: none; } }
+/* The list scrolls; the collapse control does not. Pinning it means it can
+   never be the item that falls off the bottom of a short window. */
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 16px 8px 22px;
+  scrollbar-width: thin;
+  scroll-behavior: auto;
+  /* Fade the last few pixels so it reads as "more below", not "cut off". */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent 100%);
+}
+.rail-mark {
+  font-family: var(--display);
+  font-size: 14px;
+  letter-spacing: .01em;
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.rx {
+  width: 22px; height: 22px; flex: none;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff;
+  border-radius: 6px; font-size: 12px; font-weight: 600;
+}
+.rail-group { margin-bottom: 11px; }
+.rail-group:last-child { padding-bottom: 32px; }
+.rail-group > p {
+  margin: 0 0 3px; padding: 0 8px;
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.rail a {
+  display: block; padding: 2.5px 8px; border-radius: 5px;
+  color: var(--ink-2); text-decoration: none; line-height: 1.4;
+}
+.rail a:hover { background: var(--card-2); color: var(--ink); }
+.rail a.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+
+/* ------------------------------------------------------- collapsing it --
+   The product's own sidebar collapses, so this one does too. Collapsed, the
+   contents column is given back to the page: the measure re-centres and the
+   screenshots grow by about 170px, which is the whole reason to do it. */
+.rail-toggle {
+  flex: none;
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 11px 22px; border: 0; border-top: 1px solid var(--line);
+  background: none; color: var(--ink-3); font: inherit; font-size: 12.5px;
+  text-align: left; cursor: pointer;
+}
+.rail-toggle:hover { background: var(--card-2); color: var(--ink); }
+.rail-toggle span:first-child { font-family: var(--mono); font-size: 13px; }
+
+.contents-btn {
+  position: fixed; top: 16px; left: 16px; z-index: 60;
+  display: none; align-items: center; gap: 8px;
+  padding: 7px 13px; border-radius: 8px;
+  border: 1px solid var(--line-2); background: var(--card); color: var(--ink-2);
+  font: inherit; font-size: 12.5px; cursor: pointer; box-shadow: var(--shadow);
+}
+.contents-btn:hover { color: var(--ink); }
+.contents-btn span:first-child { font-family: var(--mono); font-size: 13px; }
+
+body.collapsed .rail { display: none; }
+body.collapsed .contents-btn { display: flex; }
+body.collapsed .page { margin-left: 0; }
+body.collapsed .wrap { max-width: 1240px; }
+@media (max-width: 1080px) { .contents-btn { display: none !important; } }
+
+/* ============================================================= hero ===== */
+.hero { padding: 72px 0 8px; border-bottom: 1px solid var(--line); }
+.eyebrow {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 20px;
+}
+.hero h1 {
+  font-family: var(--display);
+  font-size: clamp(2.4rem, 5.6vw, 3.9rem);
+  line-height: 1.04; letter-spacing: -.018em; font-weight: 600;
+  margin-bottom: 20px; max-width: 17ch;
+}
+.lede { font-size: 1.16rem; line-height: 1.6; color: var(--ink-2); }
+.lede strong { color: var(--ink); font-weight: 600; }
+
+.numbers {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 1px; background: var(--line); border: 1px solid var(--line);
+  border-radius: 10px; overflow: hidden; margin: 40px 0 56px;
+}
+.numbers div { background: var(--paper); padding: 14px 16px; }
+.numbers b {
+  display: block; font-family: var(--display); font-size: 1.6rem;
+  font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums;
+}
+.numbers span { font-size: 11.5px; color: var(--ink-3); letter-spacing: .02em; }
+
+/* =========================================================== sections === */
+section { scroll-margin-top: 24px; padding-top: 56px; }
+.kicker {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 10px;
+}
+h2 {
+  font-family: var(--display); font-size: clamp(1.7rem, 3.4vw, 2.35rem);
+  font-weight: 600; letter-spacing: -.015em; line-height: 1.15; margin-bottom: 14px;
+}
+h3 {
+  font-family: var(--display); font-size: 1.3rem; font-weight: 600;
+  letter-spacing: -.01em; margin: 40px 0 10px;
+}
+h4 { font-size: .95rem; font-weight: 650; margin: 22px 0 6px; }
+.rule { height: 1px; background: var(--line); border: 0; margin: 64px 0 0; }
+
+/* ------------------------------------------------------------- screen -- */
+.screen { margin: 34px 0 8px; }
+.screen-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.screen-head h3 { margin: 0; }
+.route {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+  background: var(--card-2); border: 1px solid var(--line);
+  padding: 1px 7px; border-radius: 5px;
+}
+.oneline { color: var(--ink-2); margin-bottom: 18px; }
+
+figure.shot { margin: 0 0 10px; }
+.frame {
+  border: 1px solid var(--line-2); border-radius: 11px; overflow: hidden;
+  background: var(--card); box-shadow: var(--shadow);
+}
+.frame-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
+  background: var(--card-2);
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+}
+.dots { display: flex; gap: 5px; flex: none; }
+.dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); display: block; }
+.frame button {
+  display: block; width: 100%; padding: 0; border: 0; background: none;
+  cursor: zoom-in; font: inherit; color: inherit;
+}
+/* Every screenshot was taken at 1440x900, so reserving that ratio up front
+   keeps lazy loading from shifting the page — and from breaking anchor jumps. */
+.frame img { width: 100%; height: auto; aspect-ratio: 1440 / 900; background: var(--card-2); }
+figcaption { font-size: 13px; color: var(--ink-3); margin-top: 9px; max-width: 68ch; }
+
+/* --------------------------------------------------------------- bits -- */
+.does { list-style: none; padding: 0; margin: 16px 0 0; }
+.does li {
+  padding-left: 26px; position: relative; margin-bottom: 9px;
+  font-size: 15px; color: var(--ink-2);
+}
+.does li::before {
+  content: ""; position: absolute; left: 6px; top: .62em;
+  width: 7px; height: 7px; border-radius: 2px;
+  background: var(--accent); opacity: .55;
+}
+.does b { color: var(--ink); font-weight: 620; }
+
+.note {
+  border-left: 2px solid var(--accent); background: var(--accent-soft);
+  padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 24px 0;
+}
+.note p { margin: 0; font-size: 15px; color: var(--ink-2); }
+.note p + p { margin-top: .7em; }
+.note b { color: var(--ink); }
+
+.how {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); padding: 20px 22px; margin: 26px 0;
+}
+.how > p:first-child {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px;
+}
+.how p { font-size: 15px; }
+.how p:last-child { margin-bottom: 0; }
+
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 18px 0 0; }
+.steps li {
+  counter-increment: s; position: relative; padding-left: 38px;
+  margin-bottom: 14px; font-size: 15px; color: var(--ink-2);
+}
+.steps li::before {
+  content: counter(s); position: absolute; left: 0; top: 0;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--card-2); border: 1px solid var(--line-2);
+  color: var(--ink); font-family: var(--mono); font-size: 11.5px;
+  display: grid; place-items: center;
+}
+.steps b { color: var(--ink); font-weight: 620; }
+
+.tablewrap { overflow-x: auto; margin: 22px 0; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 460px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th {
+  font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; background: var(--card-2);
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 13px; }
+.yes { color: var(--accent); font-weight: 700; }
+.no { color: var(--ink-3); }
+
+.pill {
+  display: inline-block; padding: 1.5px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 650; letter-spacing: .02em;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pill.live { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+.pill.soon { background: var(--amber-soft); color: var(--amber); border-color: var(--amber); }
+.pill.warn { background: var(--amber-soft); color: var(--amber); }
+.pill.bad  { background: var(--danger-soft); color: var(--danger); }
+
+/* ------------------------------------------------------------ diagram -- */
+.layers { display: grid; gap: 10px; margin: 28px 0; max-width: 780px; }
+.layer {
+  border: 1px solid var(--line-2); border-radius: 10px; padding: 16px 18px;
+  background: var(--card); position: relative;
+}
+.layer h4 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 9px; }
+.layer p { margin: 0; font-size: 14px; color: var(--ink-2); max-width: none; }
+.layer .tag {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-3); font-weight: 400;
+}
+.layer.l2 { border-color: var(--accent); }
+.layer.l2 h4 { color: var(--accent-ink); }
+.arrowdown {
+  text-align: center; color: var(--ink-3); font-size: 15px; line-height: 1;
+  margin: -4px 0;
+}
+
+.flow {
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px;
+  margin: 26px 0; padding: 0;
+}
+.flow .box {
+  flex: 1 1 150px; border: 1px solid var(--line-2); border-radius: 9px;
+  background: var(--card); padding: 12px 14px; font-size: 13.5px;
+}
+.flow .box b { display: block; font-size: 13px; margin-bottom: 3px; }
+.flow .box span { color: var(--ink-3); font-size: 12.5px; }
+.flow .arrow { align-self: center; color: var(--ink-3); flex: none; }
+@media (max-width: 640px) { .flow .arrow { transform: rotate(90deg); } }
+
+.ledger {
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  margin: 26px 0; font-family: var(--mono); font-size: 13px; background: var(--card);
+}
+.ledger .row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 14px; padding: 9px 15px; border-bottom: 1px solid var(--line);
+  align-items: baseline;
+}
+.ledger .row:last-child { border-bottom: 0; }
+.ledger .row.head { background: var(--card-2); color: var(--ink-3); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+.ledger .row span:first-child { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; }
+.ledger .d { font-variant-numeric: tabular-nums; }
+.ledger .up { color: var(--accent); }
+.ledger .dn { color: var(--danger); }
+.ledger .bal { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------- soon card -- */
+.soon-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin: 28px 0; }
+.soon-card {
+  border: 1.5px dashed var(--line-2); border-radius: 11px;
+  padding: 20px 22px; background: transparent;
+}
+.soon-card h3 { margin: 10px 0 8px; font-size: 1.15rem; }
+.soon-card p { font-size: 14.5px; color: var(--ink-2); margin-bottom: .8em; }
+.soon-card p:last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------ details -- */
+details {
+  border: 1px solid var(--line); border-radius: 9px;
+  padding: 0; margin: 12px 0; background: var(--card); overflow: hidden;
+}
+summary {
+  cursor: pointer; padding: 13px 18px; font-weight: 620; font-size: 15px;
+  list-style: none; display: flex; align-items: center; gap: 10px;
+}
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: "+"; font-family: var(--mono); color: var(--accent);
+  font-size: 15px; flex: none; width: 12px;
+}
+details[open] summary::before { content: "\2212"; }
+details > *:not(summary) { padding: 0 18px; }
+details > *:last-child { padding-bottom: 16px; }
+
+/* ---------------------------------------------------------- glossary --- */
+.gloss { display: grid; gap: 0; margin: 24px 0; border-top: 1px solid var(--line); }
+.gloss div {
+  display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 24px;
+  padding: 13px 0; border-bottom: 1px solid var(--line);
+}
+.gloss dt, .gloss b { font-weight: 650; font-size: 14.5px; }
+.gloss p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+@media (max-width: 620px) { .gloss div { grid-template-columns: minmax(0,1fr); gap: 4px; } }
+
+/* ----------------------------------------------------------- lightbox -- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 90; display: none;
+  background: rgba(10,16,15,.9); padding: 24px;
+  align-items: center; justify-content: center;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 100%; max-height: 100%; border-radius: 8px;
+  box-shadow: 0 30px 80px -20px rgba(0,0,0,.8);
+}
+.lightbox .close {
+  position: absolute; top: 18px; right: 20px;
+  background: rgba(255,255,255,.12); color: #fff; border: 0;
+  width: 38px; height: 38px; border-radius: 50%; font-size: 20px; cursor: pointer;
+}
+
+footer {
+  border-top: 1px solid var(--line); margin-top: 72px; padding-top: 28px;
+  font-size: 13.5px; color: var(--ink-3);
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+
+/* ------------------------------------------------------- one left edge --
+   Everything in the page starts on the same vertical line: headings, body
+   copy, screenshots, tables, diagrams. Running text simply stops earlier so
+   the line length stays readable — it is never centred independently, and
+   nothing breaks out past the column. That single edge is what the previous
+   version got wrong, and it is what makes the page look composed rather than
+   scattered.
+
+   This block sits last on purpose: every element below carries a `margin`
+   shorthand of its own, and a shorthand declared later would silently reset
+   the margin-left set here. */
+main section > .kicker,
+main section > h2,
+main section > h3,
+main section > h4,
+main section > p,
+main section > ul,
+main section > ol,
+main section > .does,
+main section > .steps,
+main section > .note,
+main section > .how,
+main section > details,
+header.hero > .eyebrow,
+header.hero > h1,
+header.hero > .lede,
+footer > p {
+  max-width: 42rem;
+  margin-right: 0;
+}
+/* Prose-shaped blocks stay near the measure; only genuinely wide things —
+   screenshots, tables, the card grids — use the whole column. */
+main section > .layers { max-width: 46rem; }
+main section > .ledger { max-width: 46rem; }
+main section > .gloss  { max-width: 52rem; }
+figcaption { max-width: 42rem; }
+</style>
+
+<!-- =============================================================== rail -->
+<nav class="rail" id="contents" aria-label="Contents">
+  <div class="rail-scroll">
+  <div class="rail-mark"><span class="rx">℞</span> <span>Pharmacy Inventory</span></div>
+
+  <div class="rail-group">
+    <p>Start</p>
+    <a href="#what">What this is</a>
+    <a href="#idea">The one big idea</a>
+    <a href="#map">Map of the app</a>
+    <a href="#signin">Signing in</a>
+  </div>
+  <div class="rail-group">
+    <p>Overview</p>
+    <a href="#dashboard">Dashboard</a>
+  </div>
+  <div class="rail-group">
+    <p>Inventory</p>
+    <a href="#products">Products</a>
+    <a href="#stock">Stock</a>
+    <a href="#movements">Movements</a>
+  </div>
+  <div class="rail-group">
+    <p>Operations</p>
+    <a href="#purchasing">Purchasing</a>
+    <a href="#sales">Sales</a>
+    <a href="#transfers">Transfers</a>
+    <a href="#adjustments">Adjustments</a>
+  </div>
+  <div class="rail-group">
+    <p>Analysis</p>
+    <a href="#replenishment">Replenishment</a>
+    <a href="#forecast">Demand forecast</a>
+    <a href="#exceptions">Exceptions</a>
+    <a href="#leadtimes">Supplier lead times</a>
+    <a href="#soon">Coming soon</a>
+  </div>
+  <div class="rail-group">
+    <p>Compliance</p>
+    <a href="#recalls">Batch recalls</a>
+    <a href="#audit">Audit trail</a>
+  </div>
+  <div class="rail-group">
+    <p>Setup</p>
+    <a href="#masterdata">Master data</a>
+    <a href="#users">Users</a>
+    <a href="#settings">Settings</a>
+    <a href="#roles">Who sees what</a>
+  </div>
+  <div class="rail-group">
+    <p>Reference</p>
+    <a href="#architecture">Architecture</a>
+    <a href="#datamodel">Data model</a>
+    <a href="#security">Security</a>
+    <a href="#deploy">Running it</a>
+    <a href="#testing">Testing</a>
+    <a href="#stack">The stack</a>
+    <a href="#glossary">Glossary</a>
+  </div>
+  </div>
+  <button class="rail-toggle" type="button" id="collapse" aria-expanded="true"
+          aria-controls="contents">
+    <span aria-hidden="true">&#8676;</span> <span>Collapse</span>
+  </button>
+</nav>
+
+<button class="contents-btn" type="button" id="expand" aria-controls="contents">
+  <span aria-hidden="true">&#8677;</span> <span>Contents</span>
+</button>
+
+<!-- ============================================================== main -->
+<div class="page"><div class="wrap">
+<main>
+
+<header class="hero">
+  <p class="eyebrow">Product guide &middot; everything built so far</p>
+  <h1>A pharmacy chain that can prove where every tablet went.</h1>
+  <p class="lede">
+    This is inventory software for a <strong>multi-branch pharmacy</strong> — five
+    locations, one central warehouse, medicines that expire and are recalled by
+    batch. It tracks stock the way a bank tracks money: nothing is ever edited,
+    only added. On top of that history sit four features that read the past to
+    tell you something useful about the future — what to buy, how much, what
+    looks wrong, and which supplier is actually slow.
+  </p>
+
+  <div class="numbers">
+    <div><b>17</b><span>screens</span></div>
+    <div><b>85</b><span>API endpoints</span></div>
+    <div><b>44</b><span>database tables</span></div>
+    <div><b>53,013</b><span>stock movements</span></div>
+    <div><b>730</b><span>days of history</span></div>
+    <div><b>87</b><span>tests passing</span></div>
+  </div>
+</header>
+
+<!-- =========================================================== what is -->
+<section id="what">
+  <p class="kicker">Start here</p>
+  <h2>What problem it solves</h2>
+  <p>
+    A pharmacy chain has a specific kind of pain that ordinary inventory software
+    handles badly. Medicines have <b>batch numbers</b> and <b>expiry dates</b>, so
+    two boxes of the same product are not interchangeable. Stock sits in
+    <b>five different places</b> and gets moved between them. Some drugs are
+    <b>controlled</b> and every gram has to be accounted for. When a manufacturer
+    recalls a batch, you have hours — not days — to say exactly where every unit
+    of it went.
+  </p>
+  <p>
+    So the system is built around three promises:
+  </p>
+  <ul class="does">
+    <li><b>Nothing disappears.</b> Every change to stock is a permanent, timestamped
+      line in a ledger. You can always answer "why is this number what it is?"</li>
+    <li><b>Every unit has a batch.</b> Stock is counted per product, per location,
+      <em>and</em> per batch — so a recall is a lookup, not an investigation.</li>
+    <li><b>The computer explains itself.</b> Every suggestion the system makes —
+      order 190 of these, look at that Tuesday — comes with the arithmetic that
+      produced it, in a panel you can open.</li>
+  </ul>
+</section>
+
+<!-- ============================================================== idea -->
+<section id="idea">
+  <p class="kicker">The one big idea</p>
+  <h2>Stock is a ledger, not a number</h2>
+  <p>
+    Most inventory systems keep a column called <span class="mono">quantity</span>
+    and change it. When the number turns out to be wrong, there is no way to find
+    out how it got that way — the evidence was overwritten.
+  </p>
+  <p>
+    This system never does that. Receiving stock, selling it, moving it, throwing
+    it away — each one <b>appends a line</b>. The quantity on hand is not stored as
+    a fact; it is the sum of every line so far.
+  </p>
+
+  <div class="ledger" role="img" aria-label="Example ledger showing four movements adding up to a balance of 47 units">
+    <div class="row head"><span>Movement</span><span class="d">Change</span><span class="bal">Balance</span></div>
+    <div class="row"><span>Goods receipt &middot; batch PAR-650-B2</span><span class="d up">+120</span><span class="bal">120</span></div>
+    <div class="row"><span>Sale issue &middot; Andheri Branch</span><span class="d dn">&minus;55</span><span class="bal">65</span></div>
+    <div class="row"><span>Transfer dispatch &rarr; Bandra Branch</span><span class="d dn">&minus;15</span><span class="bal">50</span></div>
+    <div class="row"><span>Adjustment &middot; damaged in handling</span><span class="d dn">&minus;3</span><span class="bal">47</span></div>
+  </div>
+
+  <p>
+    Two consequences follow, and they are the reason the rest of the product can
+    exist at all:
+  </p>
+  <ul class="does">
+    <li><b>Mistakes are corrected, not erased.</b> Getting a sale wrong means
+      appending a reversing line. Both lines stay. The audit trail is the truth.</li>
+    <li><b>The past is complete.</b> Because two years of every movement are
+      genuinely on record, the forecasting and anomaly features have real material
+      to work with. They are not guessing from a snapshot.</li>
+  </ul>
+
+  <div class="note">
+    <p><b>Where the fast numbers come from.</b> Adding up 53,000 rows every time
+      someone opens a page would be slow, so the database keeps a running total in a
+      side table and updates it automatically the instant a movement is written.
+      That total is a <em>convenience</em>, never the source of truth — it can always
+      be rebuilt from the ledger, and a test checks that it still matches.</p>
+  </div>
+</section>
+
+<!-- =============================================================== map -->
+<section id="map">
+  <p class="kicker">Map of the app</p>
+  <h2>How the screens are organised</h2>
+  <p>
+    The left-hand rail in the product has six groups, and they are stacked in the
+    order the work actually happens. Everything below this point in the guide
+    follows the same order, so you can read it with the app open beside you.
+  </p>
+
+  <div class="layers">
+    <div class="layer">
+      <h4>Inventory <span class="tag">what you have</span></h4>
+      <p>The catalogue of products, the current stock by batch and location, and
+         the raw ledger of every movement.</p>
+    </div>
+    <div class="arrowdown">&darr;</div>
+    <div class="layer">
+      <h4>Operations <span class="tag">what you do</span></h4>
+      <p>Buying from distributors, selling to customers and hospitals, moving stock
+         between branches, and writing off what breaks or expires. These are the
+         screens that <em>write</em> to the ledger.</p>
+    </div>
+    <div class="arrowdown">&darr;</div>
+    <div class="layer l2">
+      <h4>Analysis <span class="tag">what it means</span></h4>
+      <p>Four features that only <em>read</em> the history above and never change
+         stock: what to reorder, what demand is coming, what looks wrong, and how
+         slow each supplier really is.</p>
+    </div>
+    <div class="arrowdown">&darr;</div>
+    <div class="layer">
+      <h4>Compliance &amp; Setup <span class="tag">what you must prove</span></h4>
+      <p>Batch recalls, the immutable audit trail, and the admin screens for
+         suppliers, users and the settings behind the analysis.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ============================================================ signin -->
+<section id="signin">
+  <p class="kicker">/login</p>
+  <h2>Signing in</h2>
+  <p class="oneline">
+    Four demo accounts exist, one per role. Which screens you see — and which
+    buttons appear on them — depends entirely on which one you use.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/login</span></div>
+      <button type="button" data-zoom><img src="{{login}}" alt="The sign-in screen" loading="lazy"></button>
+    </div>
+    <figcaption>Click any screenshot in this guide to see it full size.</figcaption>
+  </figure>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Account</th><th>Role</th><th>What they can do</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">admin@pharmacy.co.in</td><td>Administrator</td><td>Everything, including Users, the Audit trail and Settings</td></tr>
+        <tr><td class="mono">manager@pharmacy.co.in</td><td>Manager</td><td>All operations and all four Analysis screens — but not Settings or the audit trail</td></tr>
+        <tr><td class="mono">staff@pharmacy.co.in</td><td>Counter staff</td><td>Day-to-day stock work, pinned to a single branch, no costs or prices</td></tr>
+        <tr><td class="mono">customer@cityhospital.co.in</td><td>Customer</td><td>An institutional buyer's view of their own orders</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="font-size:14px;color:var(--ink-3)">
+    All four share one password, which is set when the database is seeded and is
+    deliberately not written down in any file that ships with the project.
+  </p>
+</section>
+
+<hr class="rule">
+
+<!-- ========================================================= dashboard -->
+<section id="dashboard">
+  <p class="kicker">Overview &middot; /</p>
+  <h2>Dashboard</h2>
+  <p class="oneline">
+    The first screen after signing in. It answers one question — <em>is anything
+    wrong right now?</em> — and nothing else.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/ &middot; signed in as an administrator</span></div>
+      <button type="button" data-zoom><img src="{{dashboard}}" alt="The dashboard, showing stock on hand, items below reorder, expiring batches and total stock value, with an expiry watchlist and a live activity feed" loading="lazy"></button>
+    </div>
+    <figcaption>Real numbers from the running system: 62,033 units across 12 SKUs, worth &#8377;36.6 lakh.</figcaption>
+  </figure>
+
+  <ul class="does">
+    <li><b>Four tiles across the top.</b> Units on hand, how many products have
+      dropped below their reorder level, how many batches expire within 30 days,
+      and what the whole lot is worth.</li>
+    <li><b>A red banner when stock is frozen.</b> Quarantined units — held under a
+      recall or waiting for a quality check — are counted separately, because they
+      are on the shelf but must not be dispensed.</li>
+    <li><b>Expiry watchlist.</b> The batches closest to expiring, so they get sold
+      first rather than written off later.</li>
+    <li><b>Recent activity.</b> A live feed of the ledger. Every line here is a
+      permanent record; green is stock coming in, grey is stock going out.</li>
+  </ul>
+</section>
+
+<hr class="rule">
+
+<!-- ========================================================== products -->
+<section id="products">
+  <p class="kicker">Inventory &middot; /products</p>
+  <h2>Products</h2>
+  <p class="oneline">
+    The catalogue. One row per medicine, with the rules that govern how it is
+    stored, sold and taxed.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/products</span></div>
+      <button type="button" data-zoom><img src="{{products}}" alt="The product catalogue with SKU, drug schedule, storage condition and GST rate columns" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <p>
+    A pharmacy product carries more rules than an ordinary retail item, and each
+    one changes how the system behaves:
+  </p>
+  <ul class="does">
+    <li><b>Drug schedule</b> — India classifies medicines into schedules. H and H1
+      need a prescription; X is tightly controlled. The schedule decides how
+      carefully the system protects that product's stock level.</li>
+    <li><b>Storage condition</b> — room temperature, or cold chain. Cold-chain
+      products are treated as critical, because a fridge failure costs the whole
+      batch.</li>
+    <li><b>GST rate</b> — India's sales tax. Stored per product so invoices split
+      correctly into central and state portions without anyone doing arithmetic.</li>
+    <li><b>Pack size</b> — a strip of 10, a box of 100. Order suggestions are
+      always rounded up to whole packs, because a distributor cannot ship 7.3 of
+      anything.</li>
+  </ul>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/products &middot; one product opened</span></div>
+      <button type="button" data-zoom><img src="{{product-detail}}" alt="A single product opened, showing its batches, suppliers and stock across locations" loading="lazy"></button>
+    </div>
+    <figcaption>Opening a product shows its batches, its suppliers and where its stock actually sits.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================= stock -->
+<section id="stock">
+  <p class="kicker">Inventory &middot; /stock</p>
+  <h2>Stock</h2>
+  <p class="oneline">
+    What is physically where, right now — split by location, by batch, and by
+    whether it is actually available to sell.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/stock</span></div>
+      <button type="button" data-zoom><img src="{{stock}}" alt="Stock balances by location and batch, with available, in-transit and quarantined quantities" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <p>
+    The important idea here is that <b>"in stock" is not one number</b>. The same
+    120 units can be in four different conditions, and only one of them can be
+    handed to a patient:
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Status</th><th>Meaning</th><th>Can it be sold?</th></tr></thead>
+      <tbody>
+        <tr><td><b>Available</b></td><td>On the shelf, unexpired, unrestricted</td><td class="yes">Yes</td></tr>
+        <tr><td><b>Quarantined</b></td><td>Held under a recall or waiting on a quality check</td><td class="no">No</td></tr>
+        <tr><td><b>In transit</b></td><td>Dispatched from one branch, not yet received at the other</td><td class="no">Not yet</td></tr>
+        <tr><td><b>Expired</b></td><td>Past its expiry date; awaiting write-off</td><td class="no">No</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <p><b>Why in-transit is its own status.</b> When a van leaves the Mumbai
+      warehouse for Ahmedabad, the stock is no longer at Mumbai and has not arrived
+      at Ahmedabad. Systems that ignore this either double-count it or lose it for a
+      day. Here it stays visible, owned by nobody, until someone receives it.</p>
+  </div>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/stock &middot; rail collapsed</span></div>
+      <button type="button" data-zoom><img src="{{stock-collapsed}}" alt="The same stock screen with the navigation rail collapsed to icons" loading="lazy"></button>
+    </div>
+    <figcaption>The rail collapses to icons on any screen, for people working on a narrow counter monitor.</figcaption>
+  </figure>
+</section>
+
+<!-- ========================================================= movements -->
+<section id="movements">
+  <p class="kicker">Inventory &middot; /movements</p>
+  <h2>Movements</h2>
+  <p class="oneline">
+    The ledger itself, unfiltered. Every single change to stock the system has ever
+    recorded, newest first.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/movements</span></div>
+      <button type="button" data-zoom><img src="{{movements}}" alt="The append-only movement ledger, with movement type, product, batch, quantity and who recorded it" loading="lazy"></button>
+    </div>
+    <figcaption>53,013 lines and counting. Entries are never edited or deleted — only reversed by a new line.</figcaption>
+  </figure>
+
+  <ul class="does">
+    <li><b>Every line says why.</b> Goods receipt, sale issue, transfer dispatch,
+      transfer receipt, adjustment, scrap, status change — the reason is part of
+      the record, not a free-text note.</li>
+    <li><b>Every line says who.</b> The user who caused it, and the document
+      (purchase order, sales order, transfer) it came from.</li>
+    <li><b>Nothing here has an edit button.</b> That is the point. A wrong entry is
+      fixed by recording its reversal, so both the mistake and the correction stay
+      visible forever.</li>
+  </ul>
+</section>
+
+<hr class="rule">
+
+<!-- ======================================================== purchasing -->
+<section id="purchasing">
+  <p class="kicker">Operations &middot; /purchase-orders</p>
+  <h2>Purchasing</h2>
+  <p class="oneline">
+    Ordering stock from distributors, receiving it, and putting it away under the
+    right batch and expiry date.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/purchase-orders</span></div>
+      <button type="button" data-zoom><img src="{{purchasing}}" alt="Purchase orders listed with supplier, status, value and expected date" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <ol class="steps">
+    <li><b>Draft.</b> Someone builds an order — a supplier, some products, some
+      quantities. Nothing has happened to stock yet.</li>
+    <li><b>Approved.</b> A <em>different</em> person with the right permission
+      approves it. The system refuses to let the same person do both.</li>
+    <li><b>Received.</b> When the boxes arrive, a goods receipt records what
+      actually turned up, with each batch number and expiry date. <em>This</em> is
+      the moment stock exists — and the moment the ledger gets its lines.</li>
+  </ol>
+
+  <div class="note">
+    <p><b>Why one person cannot do all three.</b> Separating who asks for money to
+      be spent from who agrees to spend it is the oldest control in accounting. The
+      rule is enforced by the server, not by the screen hiding a button.</p>
+  </div>
+</section>
+
+<!-- ============================================================= sales -->
+<section id="sales">
+  <p class="kicker">Operations &middot; /sales-orders</p>
+  <h2>Sales</h2>
+  <p class="oneline">
+    Orders going out — to hospitals and institutional buyers. The system picks
+    which batches to send.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/sales-orders</span></div>
+      <button type="button" data-zoom><img src="{{sales}}" alt="Sales orders with customer, status, and the GST-split value of each order" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <h4>FEFO — first expiry, first out</h4>
+  <p>
+    When an order for 500 units is allocated, the system does not just take 500
+    from the pile. It sorts every batch of that product by expiry date and takes
+    from the one expiring soonest, then the next, until the order is filled.
+  </p>
+  <p>
+    It is a small rule with a large effect: stock that would otherwise sit at the
+    back of the shelf and expire gets sold first. Nobody has to remember to do it,
+    and nobody can quietly not do it.
+  </p>
+
+  <h4>GST, split automatically</h4>
+  <p>
+    Indian sales tax splits differently depending on whether the buyer is in the
+    same state. Within the state it becomes two half-rate components (CGST and
+    SGST); across a state line it becomes one full-rate component (IGST). The
+    system decides from the addresses and stores all three amounts on the invoice,
+    so nobody has to know the rule.
+  </p>
+</section>
+
+<!-- ========================================================= transfers -->
+<section id="transfers">
+  <p class="kicker">Operations &middot; /transfers</p>
+  <h2>Transfers</h2>
+  <p class="oneline">
+    Moving stock from the central warehouse to a branch, or between branches.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/transfers</span></div>
+      <button type="button" data-zoom><img src="{{transfers}}" alt="Transfers between locations, showing dispatched and received states" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <p>
+    A transfer is deliberately two events, not one. <b>Dispatch</b> removes the
+    stock from the sending location and marks it in transit. <b>Receipt</b> adds it
+    at the destination. Between those two moments the stock is visible to everyone
+    but available to nobody — which is exactly its real-world state, sitting in a
+    van on the highway.
+  </p>
+  <p>
+    If the two counts disagree — 100 sent, 98 arrived — the difference does not
+    vanish. It has to be resolved as an adjustment, with a reason.
+  </p>
+</section>
+
+<!-- ======================================================= adjustments -->
+<section id="adjustments">
+  <p class="kicker">Operations &middot; /adjustments</p>
+  <h2>Adjustments</h2>
+  <p class="oneline">
+    The honest screen. Breakage, theft, expiry write-offs, and the corrections that
+    follow a physical stock count.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/adjustments</span></div>
+      <button type="button" data-zoom><img src="{{adjustments}}" alt="Stock adjustments awaiting approval, each with a reason code" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <ul class="does">
+    <li><b>Every adjustment needs a reason</b> chosen from a fixed list — damaged,
+      expired, lost, found on count, and so on. Free text is not enough to analyse
+      later.</li>
+    <li><b>Every adjustment needs a second person.</b> Nothing posts to the ledger
+      until someone else approves it, for the same reason purchase orders work that
+      way: an adjustment is the one screen that can make stock appear from nowhere.</li>
+    <li><b>Everything here is watched.</b> The Exceptions screen reads adjustments
+      closely — an unusual pattern of write-offs at one branch is exactly the sort
+      of thing it is looking for.</li>
+  </ul>
+</section>
+
+<hr class="rule">
+
+<section id="analysis-intro">
+  <p class="kicker">Analysis</p>
+  <h2>The four features that read the past</h2>
+  <p>
+    Everything above this point <em>writes</em> to the ledger. Everything below
+    only <em>reads</em> it. That separation is strict: none of these four features
+    can change a single unit of stock. The worst thing a bug in them can do is give
+    bad advice on a screen — never corrupt the record.
+  </p>
+  <p>
+    They also share a rule: <b>no answer without its working</b>. Every number
+    here can be opened to reveal the arithmetic behind it, in the same units a
+    pharmacist thinks in. A suggestion nobody can check is a suggestion nobody
+    should follow.
+  </p>
+
+  <div class="flow">
+    <div class="box"><b>The ledger</b><span>53,013 movements over 730 days</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>Daily demand per product, per branch</b><span>with stockout days repaired</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>A forecast, a lead time, a baseline</b><span>each scored against data it never saw</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>An answer with its working</b><span>order this much, look at that day</span></div>
+  </div>
+</section>
+
+<!-- =================================================== replenishment -->
+<section id="replenishment">
+  <p class="kicker">Analysis &middot; /replenishment</p>
+  <h2>Replenishment <span class="pill live">Live</span></h2>
+  <p class="oneline">
+    What to buy, how much, and why. This is the screen the whole system exists to
+    make possible.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/replenishment</span></div>
+      <button type="button" data-zoom><img src="{{replenishment}}" alt="Replenishment recommendations ranked by urgency, with days of cover, stock on hand, reorder point, suggested quantity and estimated cost" loading="lazy"></button>
+    </div>
+    <figcaption>One line needs ordering today; twelve more fall due within the review cycle. Total suggested spend, &#8377;29,935.50.</figcaption>
+  </figure>
+
+  <ul class="does">
+    <li><b>Ranked by urgency, not alphabetically.</b> "Order today" means the stock
+      will run out before a new delivery could arrive. "Order soon" means it will
+      run out before the next time anyone looks at this screen.</li>
+    <li><b>Days of cover</b> is the number to read first: how many days the current
+      stock lasts at the rate this branch is actually selling.</li>
+    <li><b>Drafts are netted off.</b> Once you raise a draft order, the row says
+      <em>drafted</em> and stops suggesting the same units again — the single most
+      common way replenishment tools cause double-ordering.</li>
+    <li><b>Raise draft order</b> turns the suggestion into a real purchase order in
+      draft, which still has to be approved by somebody. The system never places an
+      order by itself.</li>
+  </ul>
+
+  <h3>How it decides — worked through</h3>
+  <p>
+    Open any row and the whole calculation is there. This is the real panel for
+    Atorvastatin 10mg at the Bandra branch:
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/replenishment &middot; one recommendation opened</span></div>
+      <button type="button" data-zoom><img src="{{replenishment-detail}}" alt="The working behind one recommendation: forecast demand per day, lead time, demand while waiting, service level, safety stock, reorder point and order-up-to level" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <p>Read from the top, it is an ordinary chain of reasoning:</p>
+
+  <ol class="steps">
+    <li><b>This branch sells about 27.7 a day.</b> That comes from the demand
+      forecast, not from a flat average.</li>
+    <li><b>This supplier usually takes 5 days.</b> Measured from real purchase
+      orders and receipts — not from what the supplier promised.</li>
+    <li><b>So while waiting for a delivery, about 139 units will be sold.</b>
+      27.7 &times; 5.</li>
+    <li><b>But both of those numbers wobble.</b> Some days sell more; some
+      deliveries take longer. The system measures both wobbles and holds
+      <b>101.7 units of safety stock</b> to absorb them.</li>
+    <li><b>Reorder point = 139 + 102 = 240.</b> When stock drops below 240, it is
+      time to order. Stock is 251, so this row is close but not urgent.</li>
+    <li><b>Order enough to reach 434.</b> That covers the wait for delivery
+      <em>plus</em> the gap until somebody next looks at this screen. Subtract what
+      is already in stock and on order, round up to whole packs — <b>190 units</b>.</li>
+  </ol>
+
+  <div class="how">
+    <p>The one piece of real statistics</p>
+    <p>
+      Safety stock is not a guess or a flat percentage. It combines two separate
+      risks — demand being unusually high, and delivery being unusually late —
+      using the standard formula
+      <span class="mono">Z &times; &radic;(L&nbsp;&sigma;<sub>d</sub>&sup2; + d&sup2;&nbsp;&sigma;<sub>L</sub>&sup2;)</span>.
+    </p>
+    <p>
+      <b>Z</b> is how certain you want to be. The system uses a different value per
+      drug class: 2.33 for cold-chain and controlled drugs (99% — the shelf empties
+      early in fewer than one order cycle in a hundred), 1.88 for prescription
+      medicines (97%), and 1.65 for everything else (95%). A critical drug simply
+      gets more protection than a bottle of cough syrup, which is a business
+      decision an administrator can change on the Settings screen.
+    </p>
+  </div>
+
+  <div class="note">
+    <p><b>Products that are too slow to model are skipped.</b> Something selling
+      three units a month has a lead-time demand under one unit, and any safety
+      stock calculated for it is a rounding artefact dressed up as science. Those
+      are better ordered by eye, and the system says so instead of inventing a
+      number.</p>
+  </div>
+</section>
+
+<!-- ========================================================= forecast -->
+<section id="forecast">
+  <p class="kicker">Analysis &middot; /forecast</p>
+  <h2>Demand forecast <span class="pill live">Live</span></h2>
+  <p class="oneline">
+    How many units of each product each branch will need, day by day, for the next
+    month.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/forecast</span></div>
+      <button type="button" data-zoom><img src="{{forecast}}" alt="Sixty forecast series listed by product and branch, each with a confidence rating, expected units per day, error rate and the method chosen" loading="lazy"></button>
+    </div>
+    <figcaption>60 product-and-branch combinations forecast at once; 59,741 units expected across the chain over 30 days.</figcaption>
+  </figure>
+
+  <h3>Three methods, and a competition between them</h3>
+  <p>
+    Different products behave differently. Paracetamol at a hospital branch has a
+    strong weekly rhythm; a slow-moving ointment has almost none. So rather than
+    picking one method and hoping, the system runs three and lets the data choose:
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Method</th><th>What it assumes</th><th>Good at</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Moving average</b></td>
+          <td>Tomorrow looks like the last four weeks, flat</td>
+          <td>Nothing much — it is the baseline every other method has to beat</td>
+        </tr>
+        <tr>
+          <td><b>Seasonal na&iuml;ve</b></td>
+          <td>Next Tuesday looks like recent Tuesdays</td>
+          <td>Strong, stable weekly patterns</td>
+        </tr>
+        <tr>
+          <td><b>Holt-Winters</b></td>
+          <td>A level, a trend that flattens out, and a weekly shape, all learned</td>
+          <td>Most real products — it wins on most series here</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>The competition is honest</h4>
+  <p>
+    Each method is trained on all but the last four weeks of history, then asked to
+    predict those four weeks — which it has never seen. The predictions are
+    compared to what actually happened, and the method with the smallest error
+    wins <em>for that product at that branch</em>. Then it is retrained on the full
+    history to produce the real forecast.
+  </p>
+  <p>
+    This is why the "off by" column is trustworthy. It is not the error on data the
+    model was fitted to, which would always look flattering. It is the error on
+    data the model was deliberately kept away from.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/forecast &middot; one series opened</span></div>
+      <button type="button" data-zoom><img src="{{forecast-detail}}" alt="A single forecast opened, showing history and predicted demand with a confidence band, and the accuracy of the methods it beat" loading="lazy"></button>
+    </div>
+    <figcaption>History, the forecast, and the band around it — plus the scores of the methods that lost.</figcaption>
+  </figure>
+
+  <div class="how">
+    <p>Two details that matter more than the model</p>
+    <p>
+      <b>A stockout day is not a zero-demand day.</b> If the shelf was empty on
+      Tuesday, zero units were sold — but that is a fact about supply, not demand.
+      Feeding those zeros to a forecast teaches it to expect less and order less,
+      which causes the next stockout. The system detects days with no sellable
+      stock, treats them as <em>unknown</em>, and fills them from the days around
+      them. A gap longer than two weeks is left alone: at that point somebody
+      decided to stop stocking the product, and inventing demand across it would be
+      fiction.
+    </p>
+    <p>
+      <b>The band widens as it goes.</b> Predicting tomorrow is far easier than
+      predicting day thirty, so the shaded band grows with the square root of how
+      far ahead you look. A forecast drawn as a single confident line is lying about
+      how much it knows.
+    </p>
+  </div>
+</section>
+
+<!-- ======================================================= exceptions -->
+<section id="exceptions">
+  <p class="kicker">Analysis &middot; /exceptions</p>
+  <h2>Exceptions <span class="pill live">Live</span></h2>
+  <p class="oneline">
+    Movements that broke from the pattern around them — found by comparing the
+    ledger against itself, not by a rule someone has to keep updating.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/exceptions</span></div>
+      <button type="button" data-zoom><img src="{{exceptions}}" alt="Exception findings ranked by severity, each written as a sentence explaining what was unusual" loading="lazy"></button>
+    </div>
+    <figcaption>31 findings across 90 days &mdash; 5 out of hours, 25 demand breaks, 1 write-off &mdash; and &#8377;7,182.93 of value in losses.</figcaption>
+  </figure>
+
+  <h3>Four things it looks for</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Finding</th><th>The question it asks</th></tr></thead>
+      <tbody>
+        <tr><td><b>Demand break</b></td><td>Did this branch suddenly sell far more, or far less, of something than it had been?</td></tr>
+        <tr><td><b>Shrinkage</b></td><td>Is one branch losing more stock to adjustments than its own recent history explains?</td></tr>
+        <tr><td><b>Large write-off</b></td><td>Is this single loss big enough in rupees to be worth a question on its own?</td></tr>
+        <tr><td><b>Out of hours</b></td><td>Did stock move when the counter was shut?</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>How "unusual" is measured</h3>
+  <p>
+    The obvious approach — compare today to the average, flag anything far from it —
+    fails in exactly the situation you care about. One enormous day <em>drags the
+    average up</em> and inflates the spread, so the very outlier you are hunting
+    hides itself.
+  </p>
+  <p>
+    So the system uses the <b>middle</b> value instead of the average, and the
+    typical distance from that middle instead of the standard spread. Half the data
+    would have to be corrupted before the measure moves — which means a single huge
+    day stands out sharply rather than camouflaging itself.
+  </p>
+
+  <div class="how">
+    <p>The three refinements that made it usable</p>
+    <p>
+      <b>Compare against the last four weeks, not all of history.</b> Judged
+      against two years, every day of a seasonal peak looks like an anomaly. The
+      first version produced 162 findings that were really just "it is flu season".
+      Against a rolling four-week baseline — which contains four of every weekday —
+      the weekly rhythm and the season are inside the comparison rather than being
+      reported as news.
+    </p>
+    <p>
+      <b>One event is one finding.</b> A single recall wrote thirty movements at
+      11pm and produced thirty separate out-of-hours alerts. Movements close
+      together in time are now grouped into one visit — the second row of the
+      screenshot is "40 movements between 23:10 and 23:53", reported once.
+    </p>
+    <p>
+      <b>Value can speak for itself.</b> A branch that rarely writes anything off
+      has no pattern to compare against, so a genuinely large loss there would score
+      as statistically ordinary. Any write-off above a value threshold is reported
+      regardless of the statistics.
+    </p>
+  </div>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/exceptions &middot; one finding opened</span></div>
+      <button type="button" data-zoom><img src="{{exceptions-detail}}" alt="A single exception opened, showing the movements behind it and the baseline it was compared against" loading="lazy"></button>
+    </div>
+    <figcaption>Every finding opens to the movements behind it and the baseline it was measured against.</figcaption>
+  </figure>
+
+  <div class="note">
+    <p><b>Nothing here is stored.</b> Findings are recomputed from the ledger every
+      time the screen is opened, which means a finding disappears the moment the
+      ledger stops supporting it — including when somebody reverses the bad movement
+      that caused it. There is no list of stale alerts to maintain.</p>
+  </div>
+</section>
+
+<!-- ======================================================== leadtimes -->
+<section id="leadtimes">
+  <p class="kicker">Analysis &middot; /lead-times</p>
+  <h2>Supplier lead times <span class="pill live">Live</span></h2>
+  <p class="oneline">
+    How long each distributor <em>actually</em> takes — measured from your own
+    purchase orders and goods receipts, not from what they promised.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/lead-times</span></div>
+      <button type="button" data-zoom><img src="{{lead-times}}" alt="Three suppliers rated by reliability, with usual and worst-case delivery times, the extra cover each requires, and how often they met their promised date" loading="lazy"></button>
+    </div>
+    <figcaption>273 real deliveries measured. Apex usually takes 7 days — but 15 in the worst case, and it kept its promised date less than half the time.</figcaption>
+  </figure>
+
+  <h3>Why the worst case matters more than the average</h3>
+  <p>
+    Two suppliers can both average five days. One always takes five. The other takes
+    two days most of the time and twelve when it is busy. Ordering from them as if
+    they were the same guarantees stockouts from the second one.
+  </p>
+  <p>
+    So each supplier gets two numbers. <b>Usually</b> is the middle of its
+    deliveries. <b>Worst case</b> is the point nine out of ten deliveries beat.
+    The gap between them is the <b>cover needed</b> — days of extra stock you are
+    forced to carry purely because that supplier is unpredictable.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Supplier</th><th>Rating</th><th class="num">Usually</th><th class="num">Worst case</th><th class="num">Cover needed</th><th class="num">Met promise</th></tr></thead>
+      <tbody>
+        <tr><td>Apex Pharma Supply</td><td><span class="pill bad">Erratic</span></td><td class="num">7d</td><td class="num">15d</td><td class="num">+8d</td><td class="num">49%</td></tr>
+        <tr><td>Gujarat Health Traders</td><td><span class="pill live">Predictable</span></td><td class="num">5d</td><td class="num">7d</td><td class="num">+2d</td><td class="num">71%</td></tr>
+        <tr><td>MedPlus Distributors</td><td><span class="pill live">Predictable</span></td><td class="num">3d</td><td class="num">4d</td><td class="num">+1d</td><td class="num">71%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Across all three, 11 days of stock are being held purely to absorb their
+    spread. That is a rupee figure sitting on a shelf, and it is the strongest
+    argument anyone can take into a supplier negotiation.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/lead-times &middot; one supplier opened</span></div>
+      <button type="button" data-zoom><img src="{{lead-time-detail}}" alt="One supplier opened, showing the individual deliveries the statistics were computed from" loading="lazy"></button>
+    </div>
+    <figcaption>Opening a supplier lists the actual orders behind the number. A percentile nobody can trace is a number to argue with; one that lists its orders is evidence.</figcaption>
+  </figure>
+
+  <div class="note">
+    <p><b>Suppliers with too few deliveries are shown, but flagged as unproven</b>,
+      and their quoted lead time is used for ordering instead of a measured one.
+      Five deliveries cannot support a percentile, and pretending otherwise is worse
+      than admitting the gap.</p>
+  </div>
+</section>
+
+<!-- ============================================================= soon -->
+<section id="soon">
+  <p class="kicker">Analysis &middot; designed, not built</p>
+  <h2>Coming soon</h2>
+  <p>
+    Two further features are fully designed and have their place in the system
+    reserved — they appear on the Settings screen as capabilities that cannot yet
+    be switched on. They are listed here so the plan is visible, not hidden.
+  </p>
+
+  <div class="soon-grid">
+    <div class="soon-card">
+      <span class="pill soon">Coming soon</span>
+      <h3>Ask a question</h3>
+      <p>
+        Type an inventory question in plain English — <em>"which cold-chain
+        products at Andheri expire within 60 days?"</em> — and have it fill in the
+        filters on the screen where that question belongs.
+      </p>
+      <p>
+        The design point is that it <b>drives the existing screens</b> rather than
+        answering in a chat window. You land on the real page with the real filters
+        applied, so you can see what was asked, adjust it, and trust the result.
+      </p>
+    </div>
+
+    <div class="soon-card">
+      <span class="pill soon">Coming soon</span>
+      <h3>Invoice scanning</h3>
+      <p>
+        Photograph a distributor's invoice and have the system read it — supplier,
+        products, quantities, batch numbers, expiry dates — and pre-fill a goods
+        receipt.
+      </p>
+      <p>
+        It will <b>never post to the ledger by itself</b>. A person confirms every
+        line before anything is recorded, because a misread expiry date is a patient
+        safety problem, not a data-entry problem.
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ========================================================== recalls -->
+<section id="recalls">
+  <p class="kicker">Compliance &middot; /recalls</p>
+  <h2>Batch recalls</h2>
+  <p class="oneline">
+    A manufacturer says batch PAR-650-B2 is contaminated. This screen freezes it
+    everywhere at once and tells you who already received it.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/recalls &middot; starting a recall</span></div>
+      <button type="button" data-zoom><img src="{{recall-form}}" alt="The start-a-batch-recall form: choose a product, choose a batch, give a reason and an optional regulator reference" loading="lazy"></button>
+    </div>
+    <figcaption>Product, batch, reason, and the regulator's notice number. One button freezes the batch chain-wide.</figcaption>
+  </figure>
+
+  <p>This is the moment the whole ledger design pays for itself. Pressing that button:</p>
+  <ol class="steps">
+    <li><b>Quarantines every unit of that batch</b> at every location simultaneously.
+      The stock stays visible and counted — it simply cannot be dispensed or
+      allocated to any order.</li>
+    <li><b>Traces where it already went.</b> Because every issue and transfer of
+      that batch is a ledger line, the system can list each customer and branch that
+      received units, with quantities and dates — in seconds, not days.</li>
+    <li><b>Records the regulator's reference</b> alongside the reason, so the
+      paperwork and the system agree.</li>
+  </ol>
+
+  <div class="note">
+    <p><b>Why this is impossible without a ledger.</b> A system that only stores a
+      current quantity per product can tell you how many units you have. It cannot
+      tell you which of them came from the contaminated batch, or who you sold the
+      rest to. That answer only exists if you kept every line.</p>
+  </div>
+</section>
+
+<!-- ============================================================ audit -->
+<section id="audit">
+  <p class="kicker">Compliance &middot; /audit</p>
+  <h2>Audit trail</h2>
+  <p class="oneline">
+    Every state change in the system, who made it, and what the record looked like
+    immediately before.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/audit &middot; administrators only</span></div>
+      <button type="button" data-zoom><img src="{{audit}}" alt="The audit trail, listing each action with its actor, entity and before-and-after values" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <p>
+    The Movements screen records what happened to <em>stock</em>. This records what
+    happened to <em>everything else</em> — a supplier's phone number being edited, a
+    purchase order being approved, a user's role being changed, a setting being
+    moved. Each entry keeps a copy of the record before and after, so any change can
+    be reconstructed exactly.
+  </p>
+  <p>
+    It is visible to administrators only, and it is the one screen in the product
+    with no create, edit or delete action of any kind.
+  </p>
+</section>
+
+<hr class="rule">
+
+<!-- ======================================================= masterdata -->
+<section id="masterdata">
+  <p class="kicker">Setup &middot; /master-data</p>
+  <h2>Master data</h2>
+  <p class="oneline">
+    Distributors, customers, locations and the classifications products hang off.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/master-data</span></div>
+      <button type="button" data-zoom><img src="{{master-data}}" alt="Master data tabs for suppliers, customers, locations and classifications" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <ul class="does">
+    <li><b>Suppliers</b> carry the lead time they promise and their payment terms.
+      The Analysis layer compares that promise against what they actually did.</li>
+    <li><b>Customers</b> carry an address, which is what decides how GST splits on
+      their invoices.</li>
+    <li><b>Locations</b> are the warehouse and the four branches, each with its own
+      shelves and cold-chain storage.</li>
+    <li><b>Records are retired, never deleted.</b> A supplier you stop using is
+      marked inactive — deleting it would orphan two years of purchase orders and
+      break the history everything else depends on.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ users -->
+<section id="users">
+  <p class="kicker">Setup &middot; /users</p>
+  <h2>Users</h2>
+  <p class="oneline">
+    Who can sign in, what they are allowed to do, and which branch they see.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/users &middot; administrators only</span></div>
+      <button type="button" data-zoom><img src="{{users}}" alt="The user list with role and assigned branch" loading="lazy"></button>
+    </div>
+  </figure>
+
+  <p>
+    Each person gets a role, and each role holds a set of 28 individual permissions
+    — <span class="mono">po.approve</span>, <span class="mono">stock.view_cost</span>,
+    <span class="mono">audit.view</span> and so on. Counter staff can additionally be
+    <b>pinned to one branch</b>, so they only ever see their own stock.
+  </p>
+</section>
+
+<!-- ========================================================= settings -->
+<section id="settings">
+  <p class="kicker">Setup &middot; /settings</p>
+  <h2>Settings</h2>
+  <p class="oneline">
+    The judgement calls behind the Analysis screens, and the switch for each
+    capability. Administrators only.
+  </p>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/settings &middot; administrators only</span></div>
+      <button type="button" data-zoom><img src="{{settings}}" alt="The settings screen, with capability switches at the top and grouped numeric settings for trading hours, replenishment, forecast, exceptions and lead times below" loading="lazy"></button>
+    </div>
+    <figcaption>Six capabilities — four live, two not built yet and therefore not switchable — then 21 numbers, each with the reason you would change it.</figcaption>
+  </figure>
+
+  <h3>Capabilities</h3>
+  <p>
+    Each of the four Analysis features has a switch. Turning one off <b>closes its
+    API as well as hiding its menu item</b> — the endpoint starts answering "this
+    feature is switched off" rather than merely disappearing from the navigation.
+    That distinction is the whole point: something misbehaving in front of an
+    audience has to actually stop.
+  </p>
+  <p>
+    The two unbuilt features appear here too, marked <span class="pill soon">Not
+    built yet</span> and impossible to switch on. An honest roadmap beats a menu
+    item that fails.
+  </p>
+
+  <h3>The numbers</h3>
+  <p>
+    Everything the Analysis layer used to hardcode now lives here, grouped, with
+    bounds and a sentence explaining when you would touch it:
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Group</th><th>Examples</th><th>What moving it does</th></tr></thead>
+      <tbody>
+        <tr><td><b>Trading hours</b></td><td>Counter opens, counter closes</td><td>Defines what counts as out-of-hours activity on Exceptions</td></tr>
+        <tr><td><b>Replenishment</b></td><td>Review period, service level per drug class, maximum cover</td><td>How hard to chase a stockout, and how much cash to tie up doing it</td></tr>
+        <tr><td><b>Demand forecast</b></td><td>Horizon, history to learn from, held-out test window</td><td>How far ahead to predict and how the method competition is judged</td></tr>
+        <tr><td><b>Exceptions</b></td><td>Sensitivity, baseline window, value thresholds</td><td>How much it finds, and how loudly it cries wolf</td></tr>
+        <tr><td><b>Supplier lead times</b></td><td>Measurement window, minimum deliveries</td><td>How quickly a supplier's rating reacts to a change in behaviour</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="how">
+    <p>Three guardrails</p>
+    <p>
+      <b>Bad values are refused, not stored.</b> Every setting declares its type and
+      its range once, in one place, and both the form and the server enforce it from
+      the same declaration.
+    </p>
+    <p>
+      <b>Combinations are checked too.</b> Some pairs are individually legal and
+      jointly meaningless — a closing time before the opening time, a test window
+      longer than the history it is held out of, a "critical" service level lower
+      than the ordinary one. Those are rejected with an explanation.
+    </p>
+    <p>
+      <b>Nothing half-saves.</b> If any field in a batch is wrong, the whole batch is
+      rejected and what you see on screen is still exactly what is in effect. Every
+      change is recorded in the audit trail with its before and after values, so
+      "it started recommending twice as much last Tuesday" is an answerable question.
+    </p>
+  </div>
+
+  <div class="note">
+    <p><b>What is deliberately not a setting.</b> Anything that could make a number
+      <em>wrong</em> rather than <em>different</em>. The append-only ledger, the
+      first-expiry-first-out rule, the GST split and the two-person approval rule are
+      not adjustable and never will be — they are the guarantees the system exists
+      to make. What is adjustable is judgement: how cautious to be, how far back to
+      look, how hard to chase a stockout.</p>
+  </div>
+</section>
+
+<!-- ============================================================ roles -->
+<section id="roles">
+  <p class="kicker">Setup</p>
+  <h2>Who sees what</h2>
+  <p>
+    Permissions are checked on the server for every single request. The interface
+    hides buttons a person cannot use, but that is only tidiness — the real refusal
+    happens in the API, so it holds even for someone bypassing the interface
+    entirely.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Capability</th><th>Admin</th><th>Manager</th><th>Staff</th><th>Customer</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Record stock movements</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td></tr>
+        <tr><td>Create and edit products</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>Approve orders, transfers, adjustments</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>See unit cost and stock valuation</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>All four Analysis screens</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>Start a batch recall</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>Manage users</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>Change settings</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>View the audit trail</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    One rule cuts across all of these: <b>the person who creates something cannot be
+    the person who approves it.</b> It applies to purchase orders, transfers and
+    adjustments, and it is enforced even for an administrator who holds both
+    permissions.
+  </p>
+</section>
+
+<hr class="rule">
+
+<!-- ===================================================== architecture -->
+<section id="architecture">
+  <p class="kicker">Reference</p>
+  <h2>Architecture</h2>
+  <p>
+    Everything from here on is for whoever has to build on this, review it, or run
+    it. It is written to be readable without the code open.
+  </p>
+
+  <h3>The shape of it</h3>
+  <p>
+    Four pieces, one machine. There is no message broker, no separate cache, no
+    search cluster and no vector database — each of those was considered and left
+    out, because every extra moving part is another thing that can be down at 2am
+    for a chain with five branches.
+  </p>
+
+  <div class="flow">
+    <div class="box"><b>Browser</b><span>React 19 + Vite + TypeScript, one single-page app</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>Caddy</b><span>Reverse proxy, automatic HTTPS certificates</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>FastAPI</b><span>Python, 85 endpoints, OpenAPI generated automatically</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>PostgreSQL 16</b><span>44 tables, the single source of truth</span></div>
+  </div>
+
+  <h3>Three layers, one direction</h3>
+  <p>
+    The backend is stacked so that dependencies only ever point downward. Nothing in
+    a lower layer knows the layer above it exists.
+  </p>
+
+  <div class="layers">
+    <div class="layer">
+      <h4>Layer 0 &mdash; the record <span class="tag">app/models, app/services</span></h4>
+      <p>Products, batches, locations, the movement ledger and the balance
+         projection. Owns every invariant: append-only, batch integrity, GST
+         arithmetic, the audit log.</p>
+    </div>
+    <div class="arrowdown">&uarr;</div>
+    <div class="layer">
+      <h4>Layer 1 &mdash; the documents <span class="tag">app/api/v1</span></h4>
+      <p>Purchase orders, goods receipts, sales orders, transfers, adjustments,
+         recalls. Each one is a state machine whose transitions write ledger lines.
+         Nothing here writes stock directly; it all goes through Layer 0.</p>
+    </div>
+    <div class="arrowdown">&uarr;</div>
+    <div class="layer l2">
+      <h4>Layer 2 &mdash; the analysis <span class="tag">app/ai</span></h4>
+      <p>Forecasting, replenishment, exceptions, lead times. <b>Read-only by
+         construction</b> — these modules import query helpers and never the write
+         services, so a bug here cannot corrupt the record.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <p><b>Why the build order was 0 &rarr; 1 &rarr; 2.</b> Layer 2 is the interesting
+      part, but it is worthless without two years of real movement history to read.
+      So the ledger came first, then the documents that fill it, then a synthetic
+      history generator that produced 53,013 movements across 730 days with genuine
+      weekly rhythm, seasonal illness peaks, supplier delays and stockouts — and only
+      then the analysis that reads them.</p>
+  </div>
+</section>
+
+<!-- ======================================================== datamodel -->
+<section id="datamodel">
+  <p class="kicker">Reference</p>
+  <h2>The data model</h2>
+
+  <h3>The ledger and its projection</h3>
+  <p>
+    <span class="mono">stock_movements</span> is append-only: no update path, no
+    delete path, in the code or in the permissions. Every row carries the product,
+    the batch, the location, the signed quantity, the movement type, the document it
+    came from, the user, and the timestamp.
+  </p>
+  <p>
+    <span class="mono">stock_balances</span> is a <em>projection</em> of that ledger —
+    a running total per product, per batch, per location, per status. It is
+    maintained by a database trigger that fires on insert, so it cannot drift out of
+    step with the ledger even if a write comes from outside the application.
+  </p>
+
+  <div class="flow">
+    <div class="box"><b>Document transition</b><span>e.g. a goods receipt is posted</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>INSERT into stock_movements</b><span>one row per batch received</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>Trigger fires</b><span>AFTER INSERT, inside the same transaction</span></div>
+    <div class="arrow">&rarr;</div>
+    <div class="box"><b>stock_balances updated</b><span>rebuildable from the ledger at any time</span></div>
+  </div>
+
+  <p>
+    A test in the suite recomputes every balance from scratch and asserts it matches
+    the projection. If that test ever fails, the projection is wrong and the ledger
+    is right — and the fix is to rebuild the projection, never to edit the ledger.
+  </p>
+
+  <h3>Other decisions worth knowing</h3>
+
+  <details>
+    <summary>Batch and expiry tracking</summary>
+    <p>
+      Stock is keyed by <em>batch</em>, not just by product. That is what makes
+      first-expiry-first-out allocation and single-batch recalls possible. Cold-chain
+      products additionally carry storage constraints that mark them as critical in
+      the replenishment maths.
+    </p>
+  </details>
+
+  <details>
+    <summary>Concurrency — two people selling the last box</summary>
+    <p>
+      Allocation takes a row-level database lock on the batch rows it is about to
+      consume. Two simultaneous sales of the same last units cannot both succeed; the
+      second one waits, re-reads, and correctly reports that stock ran out. Without
+      this, the ledger would happily record a negative balance.
+    </p>
+  </details>
+
+  <details>
+    <summary>GST — three columns, not one</summary>
+    <p>
+      Every invoice line stores CGST, SGST and IGST separately rather than a single
+      tax figure. Which of them is non-zero is decided by comparing the seller's and
+      buyer's state. Storing the split rather than recomputing it means a historical
+      invoice still reads correctly after tax rules change.
+    </p>
+  </details>
+
+  <details>
+    <summary>Audit log — before and after</summary>
+    <p>
+      Every state change writes an audit row containing a JSON snapshot of the record
+      before and after, the action name, the actor and the timestamp. Settings
+      changes, approvals, master-data edits and user changes all land here.
+    </p>
+  </details>
+
+  <details>
+    <summary>Time zones — stored in UTC, asked in local time</summary>
+    <p>
+      Every timestamp is stored in UTC. Every <em>question</em> — "was this out of
+      hours?", "how much sold on Tuesday?" — is asked in Asia/Kolkata. Getting this
+      wrong is not a cosmetic bug: an early version treated 20:00 UTC as an evening
+      hour when it is 01:30 in Mumbai, and produced 1,698 false out-of-hours findings.
+      The conversion now lives in one module that everything else calls.
+    </p>
+  </details>
+
+  <details>
+    <summary>Caching the expensive parts</summary>
+    <p>
+      Fitting sixty forecast models takes a few seconds, so results are cached in
+      process against two things: the highest movement id in the ledger, and a version
+      counter that every settings change increments. Add a movement or change a
+      setting and the cache is invalid immediately — there is no stale window. The
+      models are also fitted once at start-up in a background thread, so the first
+      person to open the screen does not pay for it.
+    </p>
+  </details>
+</section>
+
+<!-- ========================================================= security -->
+<section id="security">
+  <p class="kicker">Reference</p>
+  <h2>Security</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Concern</th><th>How it is handled</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Passwords</b></td>
+          <td>Hashed with bcrypt. No password appears in the repository, in any
+              config file that ships, or in this document.</td>
+        </tr>
+        <tr>
+          <td><b>Access tokens</b></td>
+          <td>Short-lived JWTs held in JavaScript memory only — never in
+              <span class="mono">localStorage</span>, which is where cross-site
+              scripting goes looking for them.</td>
+        </tr>
+        <tr>
+          <td><b>Refresh tokens</b></td>
+          <td>An httpOnly, Secure, SameSite=Strict cookie. Stored hashed, and
+              rotated on every use — reusing a spent one revokes the whole family
+              and forces a fresh sign-in, which is how token theft is detected.</td>
+        </tr>
+        <tr>
+          <td><b>Authorisation</b></td>
+          <td>Checked server-side on every request via a permission dependency. The
+              interface hiding a button is convenience, not a control.</td>
+        </tr>
+        <tr>
+          <td><b>Feature switches</b></td>
+          <td>Enforced in the API, not just the navigation. A switched-off feature's
+              endpoint refuses, so hiding a menu item cannot be worked around.</td>
+        </tr>
+        <tr>
+          <td><b>Branch scoping</b></td>
+          <td>Staff pinned to a location have that filter applied in the query
+              itself, not in the response — they cannot ask for another branch's
+              stock.</td>
+        </tr>
+        <tr>
+          <td><b>Errors</b></td>
+          <td>Every failure returns a structured problem document with a request id
+              and no internal detail. The full trace goes to the log, not to the
+              browser.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- =========================================================== deploy -->
+<section id="deploy">
+  <p class="kicker">Reference</p>
+  <h2>Running it</h2>
+
+  <h3>In production</h3>
+  <p>
+    Everything runs in Docker on a single AWS EC2 instance inside the free tier.
+    Caddy sits in front and obtains TLS certificates by itself. Postgres runs as a
+    container with a mounted volume. GitHub Actions builds the images and deploys on
+    a push to the main branch.
+  </p>
+  <p>
+    The tight memory budget shaped real decisions: no broker, no separate cache, and
+    a forecasting stack that is numpy and statsmodels rather than anything requiring
+    a gigabyte of tensors.
+  </p>
+
+  <h3>On a laptop</h3>
+  <p>
+    Nothing is installed system-wide. Postgres runs from a directory inside the
+    project on a non-standard port, so it cannot collide with anything else on the
+    machine, and deleting the project directory removes it completely.
+  </p>
+  <ol class="steps">
+    <li><b>Start the database</b> and apply migrations.</li>
+    <li><b>Seed it</b> — roles, permissions, users, products, locations, suppliers.</li>
+    <li><b>Generate history</b> — 730 days of synthetic movements, which is what
+      makes the Analysis screens meaningful.</li>
+    <li><b>Run the API and the web app</b>, and sign in with one of the demo accounts.</li>
+  </ol>
+</section>
+
+<!-- ========================================================== testing -->
+<section id="testing">
+  <p class="kicker">Reference</p>
+  <h2>Testing</h2>
+  <p>
+    87 tests run against a live API and a real database. They deliberately do not
+    assert that the forecast is accurate — pinning an error rate in a test only makes
+    the suite brittle. They assert the properties that cause real damage when they
+    break:
+  </p>
+  <ul class="does">
+    <li><b>The ledger invariant</b> — balances recomputed from movements match the
+      projection exactly.</li>
+    <li><b>First-expiry-first-out</b> — allocation takes the earliest-expiring batch,
+      every time.</li>
+    <li><b>GST</b> — the split is correct within a state and across a state line.</li>
+    <li><b>Every permission boundary</b> — each role is checked against each
+      protected endpoint, including the separation-of-duties rule.</li>
+    <li><b>Analysis safety</b> — a forecast never predicts negative demand;
+      percentiles are ordered; stock already on order or on a draft is netted off so
+      nothing is ordered twice; prices come from the supplier record and not from the
+      request.</li>
+    <li><b>Settings</b> — bad values are refused, contradictory combinations are
+      refused, a batch with one bad field writes none of it, a switched-off feature
+      closes its own endpoint and no others, and every change lands in the audit log.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ stack -->
+<section id="stack">
+  <p class="kicker">Reference</p>
+  <h2>The stack</h2>
+  <p>
+    Chosen for a five-person team with ten days, and biased throughout toward fewer
+    moving parts.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Area</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>API</td><td>FastAPI + uvicorn</td><td>Typed request models and a generated OpenAPI spec for free</td></tr>
+        <tr><td>Database</td><td>PostgreSQL 16</td><td>Triggers, row locks and JSON columns — all three are load-bearing here</td></tr>
+        <tr><td>Data access</td><td>SQLAlchemy 2 + Alembic</td><td>Explicit queries and reviewable, versioned migrations</td></tr>
+        <tr><td>Validation</td><td>Pydantic v2</td><td>One schema definition serves validation, serialisation and the docs</td></tr>
+        <tr><td>Forecasting</td><td>numpy + statsmodels</td><td>Holt-Winters and a backtest harness. No deep-learning stack, on purpose</td></tr>
+        <tr><td>Frontend</td><td>React 19 + Vite + TypeScript</td><td>Fast builds, and types shared with the API contract</td></tr>
+        <tr><td>Styling</td><td>Tailwind CSS v4</td><td>One token system, no stylesheet drift across seventeen screens</td></tr>
+        <tr><td>Server state</td><td>TanStack Query</td><td>Caching and invalidation without a hand-rolled store</td></tr>
+        <tr><td>Charts</td><td>Recharts</td><td>Composable, and small enough for the memory budget</td></tr>
+        <tr><td>Auth</td><td>PyJWT + bcrypt</td><td>Short access tokens, rotated refresh tokens</td></tr>
+        <tr><td>Logging</td><td>structlog</td><td>Structured lines with a request id on every one</td></tr>
+        <tr><td>Tests</td><td>pytest + httpx</td><td>End-to-end against a live API rather than mocks</td></tr>
+        <tr><td>Delivery</td><td>Docker + Caddy + GitHub Actions</td><td>One instance, automatic HTTPS, deploy on push</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="numbers" style="margin-top:34px">
+    <div><b>13,482</b><span>lines of Python</span></div>
+    <div><b>11,868</b><span>lines of TypeScript</span></div>
+    <div><b>44</b><span>tables</span></div>
+    <div><b>6</b><span>migrations</span></div>
+    <div><b>28</b><span>permissions</span></div>
+    <div><b>87</b><span>tests</span></div>
+  </div>
+</section>
+
+<hr class="rule">
+
+<!-- ========================================================= glossary -->
+<section id="glossary">
+  <p class="kicker">Reference</p>
+  <h2>Glossary</h2>
+  <p>
+    Every term in this guide that is not ordinary English, explained without
+    assuming anything.
+  </p>
+
+  <div class="gloss">
+    <div><b>Batch (or lot)</b><p>A manufacturing run, identified by a code printed on the box, with its own expiry date. Two batches of the same medicine are not interchangeable — which is why recalls work on batches, not products.</p></div>
+    <div><b>SKU</b><p>Stock Keeping Unit — the code identifying a sellable product, like <span class="mono">PAR-650</span> for Paracetamol 650mg.</p></div>
+    <div><b>FEFO</b><p>First Expiry, First Out. When filling an order, take from the batch that expires soonest. Prevents stock quietly ageing at the back of the shelf.</p></div>
+    <div><b>Quarantined</b><p>Physically present but not sellable — usually because the batch is under recall or waiting on a quality check.</p></div>
+    <div><b>In transit</b><p>Dispatched from one location, not yet received at the next. Counted, visible, and available to neither.</p></div>
+    <div><b>Drug schedule</b><p>India's classification of medicines. Schedule H and H1 require a prescription; Schedule X is tightly controlled. The system protects higher-schedule stock more carefully.</p></div>
+    <div><b>Cold chain</b><p>Products that must stay refrigerated end to end. Treated as critical, because a break costs the whole batch.</p></div>
+    <div><b>GST / CGST / SGST / IGST</b><p>India's sales tax. Within a state it splits into central and state halves (CGST + SGST); across a state line it is a single integrated tax (IGST).</p></div>
+    <div><b>Lead time</b><p>How long a supplier takes between an order being placed and the stock arriving. Measured here from your own records, not from the supplier's promise.</p></div>
+    <div><b>Days of cover</b><p>How many days the current stock will last at the rate this branch is actually selling. The first number to read on the Replenishment screen.</p></div>
+    <div><b>Reorder point</b><p>The stock level at which you must order to avoid running out before the delivery arrives. Demand during the wait, plus safety stock.</p></div>
+    <div><b>Safety stock</b><p>Extra stock held to absorb two kinds of bad luck: an unusually busy week, and an unusually late delivery. Measured separately for each and combined.</p></div>
+    <div><b>Service level</b><p>How certain you want to be of not running out. 95% means that in five order cycles out of a hundred, the shelf empties before the delivery lands. Higher certainty costs cash tied up in stock.</p></div>
+    <div><b>Review period</b><p>How often somebody actually looks at the Replenishment screen. Orders are sized to last until the next look, so setting it shorter than reality causes stockouts between reviews.</p></div>
+    <div><b>Percentile / P90</b><p>The value that nine out of ten observations come in under. A supplier's P90 lead time is its realistic worst case, which matters far more than its average.</p></div>
+    <div><b>Backtest</b><p>Hiding the recent past from a model, asking it to predict that period, and scoring it against what really happened. The only honest way to compare forecasting methods.</p></div>
+    <div><b>Holt-Winters</b><p>A forecasting method that learns three things at once: the current level, a trend that gradually flattens, and a repeating weekly shape.</p></div>
+    <div><b>Stockout</b><p>Having none of something that people wanted. Critically, a stockout day is a day of <em>unknown</em> demand, not zero demand.</p></div>
+    <div><b>Shrinkage</b><p>Stock that disappears without a sale — breakage, theft, miscounting. The Exceptions screen watches for branches losing more than their own history explains.</p></div>
+    <div><b>Append-only ledger</b><p>A record where lines are only ever added, never edited or removed. Corrections are new lines that reverse old ones, so the history of a mistake survives alongside its fix.</p></div>
+    <div><b>Projection</b><p>A summary table derived from a ledger and kept up to date automatically. Fast to read, and always rebuildable from the lines it came from.</p></div>
+    <div><b>Separation of duties</b><p>The person who creates something cannot be the person who approves it. Applied here to purchase orders, transfers and adjustments.</p></div>
+  </div>
+</section>
+
+<footer>
+  <p>
+    <b>Pharmacy Inventory Management System</b> &mdash; product guide.
+    Every screenshot on this page is the running application with 730 days of
+    generated history behind it; no interface has been mocked up or retouched.
+  </p>
+  <p>
+    Two features are marked <span class="pill soon">Coming soon</span> and are not
+    built. Everything else described here is working, tested and deployed.
+  </p>
+</footer>
+
+
+
+</main>
+</div></div>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Full size screenshot">
+  <button class="close" type="button" aria-label="Close">&times;</button>
+  <img alt="">
+</div>
+
+<script>
+(function () {
+  /* ---- lightbox ---- */
+  var box = document.getElementById("lightbox");
+  var boxImg = box.querySelector("img");
+  var last = null;
+
+  document.addEventListener("click", function (e) {
+    var trigger = e.target.closest("[data-zoom]");
+    if (trigger) {
+      var img = trigger.querySelector("img");
+      boxImg.src = img.src;
+      boxImg.alt = img.alt;
+      box.classList.add("open");
+      last = trigger;
+      box.querySelector(".close").focus();
+      return;
+    }
+    if (e.target.closest(".lightbox")) close();
+  });
+
+  function close() {
+    box.classList.remove("open");
+    boxImg.src = "";
+    if (last) { last.focus(); last = null; }
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && box.classList.contains("open")) close();
+  });
+
+  /* ---- collapsing the contents rail ---- */
+  var rail = document.querySelector(".rail-scroll");
+  var collapse = document.getElementById("collapse");
+  var expand = document.getElementById("expand");
+
+  function setCollapsed(on, remember) {
+    document.body.classList.toggle("collapsed", on);
+    collapse.setAttribute("aria-expanded", String(!on));
+    if (remember) {
+      try { localStorage.setItem("guide-rail", on ? "closed" : "open"); } catch (e) {}
+    }
+  }
+  try { setCollapsed(localStorage.getItem("guide-rail") === "closed", false); } catch (e) {}
+
+  collapse.addEventListener("click", function () {
+    setCollapsed(true, true);
+    expand.focus();
+  });
+  expand.addEventListener("click", function () {
+    setCollapsed(false, true);
+    collapse.focus();
+  });
+
+  /* ---- highlight the section being read ---- */
+  var links = {};
+  document.querySelectorAll(".rail a").forEach(function (a) {
+    links[a.getAttribute("href").slice(1)] = a;
+  });
+  var seen = new Set();
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) seen.add(entry.target.id);
+      else seen.delete(entry.target.id);
+    });
+    var order = Object.keys(links);
+    var active = order.find(function (id) { return seen.has(id); });
+    order.forEach(function (id) { links[id].classList.toggle("on", id === active); });
+    // Keep the current entry inside the rail's own scroll box. Without this the
+    // rail can sit scrolled to the bottom while the page is at the top, which
+    // hides its heading and reads as a broken layout. At the first section,
+    // snap right back to the top so the mark is always there to greet you.
+    if (!active) {
+      if (window.scrollY < 40) rail.scrollTop = 0;  // back at the hero
+      return;
+    }
+    if (order.indexOf(active) === 0) rail.scrollTop = 0;
+    else links[active].scrollIntoView({ block: "nearest" });
+  }, { rootMargin: "-10% 0px -70% 0px" });
+  document.querySelectorAll("main section[id]").forEach(function (s) { observer.observe(s); });
+})();
+</script>
