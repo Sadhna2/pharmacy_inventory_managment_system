@@ -73,6 +73,9 @@ jobs:
     name: Roll out to EC2
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read      # the box pulls the images this token published
 
     steps:
       - uses: actions/checkout@v4
@@ -92,10 +95,20 @@ jobs:
       - name: Pull, migrate, restart
         run: |
           ssh -i ~/.ssh/deploy.pem ec2-user@${{ secrets.EC2_HOST }} bash -euo pipefail <<'REMOTE'
+            # A package published by GITHUB_TOKEN is private until someone makes
+            # it otherwise, so the box cannot pull anonymously. Authenticating
+            # is one line and does not care either way, which beats depending on
+            # a visibility setting nobody will remember is load-bearing.
+            echo '${{ secrets.GITHUB_TOKEN }}' \
+              | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
             export API_IMAGE="${{ env.IMAGE_BASE }}-api:${{ github.sha }}"
             export WEB_IMAGE="${{ env.IMAGE_BASE }}-web:${{ github.sha }}"
             # Persist the tags so a manual `docker compose up` on the box uses
             # the same images CI deployed, rather than drifting to :latest.
+            # `sed -i` fails outright on a missing file, and on a first deploy
+            # there is no ~/.env yet.
+            touch ~/.env
             sed -i '/^API_IMAGE=/d;/^WEB_IMAGE=/d' ~/.env
             echo "API_IMAGE=$API_IMAGE" >> ~/.env
             echo "WEB_IMAGE=$WEB_IMAGE" >> ~/.env
