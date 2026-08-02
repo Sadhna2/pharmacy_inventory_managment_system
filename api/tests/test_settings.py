@@ -355,6 +355,15 @@ def test_sensitivity_changes_what_the_detector_reports(client, admin, manager):
         resp.raise_for_status()
         return resp.json()["summary"]["total"]
 
+    # Sensitivity is only observable against the generated trading history.
+    # The bootstrap fixture is a few dozen movements with no borderline days in
+    # them, so every threshold finds the same handful and the final assertion
+    # would be measuring nothing. Guarding on `strict == 0` did not catch that:
+    # the fixture does produce findings, just never any *additional* ones.
+    lead = client.get("/api/v1/ai/lead-times", headers=manager).json()
+    if not any(s["deliveries"] >= 20 for s in lead["suppliers"]):
+        pytest.skip("needs synthetic history — run python -m app.seed.history")
+
     client.post("/api/v1/settings/reset", headers=admin)
     strict = findings()
 
@@ -367,8 +376,6 @@ def test_sensitivity_changes_what_the_detector_reports(client, admin, manager):
 
     client.post("/api/v1/settings/reset", headers=admin)
     assert findings() == strict
-    if strict == 0:
-        pytest.skip("no anomaly history seeded to compare against")
     assert loose > strict, "lowering the threshold found no extra days"
 
 

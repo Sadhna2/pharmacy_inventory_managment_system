@@ -74,6 +74,14 @@ jobs:
         working-directory: api
         run: python -m app.seed.bootstrap
 
+      # Without this the nine analysis tests skip themselves and the suite
+      # reports green having checked none of Layer 2. The generator takes a
+      # fixed RNG seed, so the same history is produced on every run and a
+      # failure means the code changed rather than the dice did.
+      - name: Seed trading history
+        working-directory: api
+        run: python -m app.seed.history --days 730
+
       # The suite is deliberately end-to-end: it exercises the mutation trigger,
       # the balance projection and the row locks under concurrent allocation,
       # and none of those survive being mocked. So it needs a real server on
