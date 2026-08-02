@@ -42,6 +42,12 @@ jobs:
       SECRET_KEY: ci-only-not-a-real-key
       SEED_PASSWORD: CiTestPassword@2026
       ENV: development
+      # The suite reads the audit log straight from the database through
+      # scripts/db.sh, whose defaults point at a developer's local cluster.
+      # Redirect it at the service container.
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGPASSWORD: pharmacy
 
     steps:
       - uses: actions/checkout@v4
@@ -68,9 +74,31 @@ jobs:
         working-directory: api
         run: python -m app.seed.bootstrap
 
+      # The suite is deliberately end-to-end: it exercises the mutation trigger,
+      # the balance projection and the row locks under concurrent allocation,
+      # and none of those survive being mocked. So it needs a real server on
+      # the other end of a real socket, not an in-process test client.
+      - name: Start the API
+        working-directory: api
+        run: |
+          uvicorn app.main:app --port 8000 --log-level warning > /tmp/uvicorn.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health/ready >/dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::the API never became ready"
+          cat /tmp/uvicorn.log
+          exit 1
+
       - name: Test
         working-directory: api
         run: pytest -q
+
+      # Without this a failing test says "connection refused" and nothing about
+      # why the server fell over.
+      - name: API log on failure
+        if: failure()
+        run: cat /tmp/uvicorn.log
 
   frontend:
     name: Frontend — lint, typecheck, build
