@@ -1,0 +1,46 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Project-local Postgres cluster (never commit a database)
+api/.pgdata/
+
+# Env
+.env
+.env.local
+
+# Node
+node_modules/
+web/dist/
+web/.vite/
+
+# Local tooling / editor state
+.claude/
+.DS_Store
+.idea/
+.vscode/
+
+# Working notes for the team — not a deliverable
+COMMIT_PLAN.md
+
+# Internal design reference, kept out of the published repository.
+# Code comments still cite it by section ("ARCHITECTURE.md §6.4") because those
+# citations are the reason a given line is written the way it is; they read as
+# provenance rather than as links, and stay useful to anyone holding the file.
+ARCHITECTURE.md
+
+# Generated benchmark artefacts — regenerate with bench/ocr/generate.py
+bench/ocr/out/
+
+# The invoice bundle uploaded to the Colab notebook: 18 MB of images packed
+# from out/png@2x/, which is itself generated and ignored. Rebuild it with
+#     python3 render.py --scale 2 && (cd out && zip -r ../colab/invoices_300dpi.zip "png@2x")
+bench/ocr/colab/*.zip
+
+# Throwaway Chrome profiles left by the screenshot scripts
+docs/product-guide/shots/.profile*
+# The published guide is built from guide.html + shots/ — see build.mjs
+docs/product-guide/dist/
