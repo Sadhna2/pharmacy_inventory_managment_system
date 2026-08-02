@@ -1,0 +1,40 @@
+# Production overlay.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Two differences from local: the images are pulled in prebuilt rather than
+# built on the box (a 2 GB server should never run `vite build`), and Caddy is
+# given a real hostname so it fetches a Let's Encrypt certificate on its own.
+
+services:
+  db:
+    # Never publish the database port. Reachable only over the internal
+    # Docker network, so it is not addressable from the internet at all.
+    ports: !reset []
+
+  # Image tags come from CI, pinned to a commit SHA so a rollback is
+  # "deploy the previous SHA" rather than a rebuild. The defaults are the
+  # locally-loaded images, which keeps a manual deploy working with no CI.
+  migrate:
+    build: !reset null
+    image: ${API_IMAGE:-pharmacy-api:latest}
+
+  api:
+    build: !reset null
+    image: ${API_IMAGE:-pharmacy-api:latest}
+
+  web:
+    build: !reset null
+    image: ${WEB_IMAGE:-pharmacy-web:latest}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Certificates persist across restarts. Without this Caddy re-requests
+      # on every deploy and would hit Let's Encrypt rate limits.
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  caddydata:
+  caddyconfig:

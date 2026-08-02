@@ -1,0 +1,90 @@
+# Local execution: `docker compose up` and the whole system runs.
+#
+# Nothing needs installing first — no Python, no Node, no Postgres. That is
+# the point: a teammate clones the repo and has a working pharmacy system in
+# one command, seeded with demo data and ready to sign into.
+#
+# The same three services run in production; only the environment differs.
+
+name: pharmacy
+
+services:
+  # --- database -------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pharmacy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: pharmacy
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No `ports:` on purpose. The database is reachable only from the other
+    # containers on this network — never from the host, never the internet.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmacy -d pharmacy"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # --- schema + demo data ---------------------------------------------------
+  # Runs once and exits. The API waits for it to finish successfully, so the
+  # app never starts against a half-migrated database.
+  migrate:
+    build: ./api
+    command: >
+      sh -c "alembic upgrade head && python -m app.seed.bootstrap"
+    environment:
+      DATABASE_URL: postgresql+psycopg://pharmacy:${POSTGRES_PASSWORD:-localdev}@db:5432/pharmacy
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-in-production}
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
+      ENV: ${ENV:-development}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # --- backend --------------------------------------------------------------
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql+psycopg://pharmacy:${POSTGRES_PASSWORD:-localdev}@db:5432/pharmacy
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-in-production}
+      ENV: ${ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Caddy proxies the browser to this service on the same origin, so the
+      # browser never makes a cross-origin request and CORS never applies.
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/ready').status==200 else 1)\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    # Explicit ceiling: the production box has 2 GB and three services to fit.
+    mem_limit: 512m
+
+  # --- frontend + reverse proxy --------------------------------------------
+  web:
+    build: ./web
+    environment:
+      # ":80" locally means plain HTTP with no certificate. In production this
+      # is set to the real hostname and Caddy fetches a Let's Encrypt
+      # certificate for it on its own.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+      - "${WEB_TLS_PORT:-8443}:443"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 128m
+
+volumes:
+  # Survives `docker compose down`. Use `down -v` to wipe and reseed.
+  pgdata:
