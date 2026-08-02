@@ -1,0 +1,57 @@
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+# A deliberate subset rather than the whole catalogue: correctness rules that
+# catch real bugs, plus import hygiene. Without this, ruff applies every rule
+# it ships with and drowns real findings in style opinions.
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes — undefined names, unused imports
+    "W",    # pycodestyle warnings
+    "I",    # import sorting
+    "B",    # bugbear — mutable defaults, shadowed loop vars
+    "UP",   # pyupgrade — outdated syntax
+    "C4",   # comprehension simplifications
+]
+ignore = [
+    "E501",  # line length: enforced by the formatter, not the linter
+    "B008",  # see flake8-bugbear below — this is FastAPI's core idiom
+    # SQLAlchemy relationships are declared as Mapped["Product"] where the
+    # target is NOT imported, because importing it would be circular. The
+    # mapper resolves the string from its registry at configure time.
+    # Unquoting these would raise NameError at class-definition time.
+    "UP037",
+    # PEP 695 type-parameter syntax for Page[T]/paginate(). A real
+    # modernisation, but it touches the pagination generics the whole API
+    # depends on — not something to change alongside a CI setup.
+    "UP046",
+    "UP047",
+    # `class Foo(str, Enum)` rather than StrEnum. Not cosmetic: the two differ
+    # in what str() returns, and these enums are persisted as Postgres enum
+    # types and serialised by Pydantic. Switching would be a data-format
+    # change, so it stays a deliberate choice.
+    "UP042",
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies as `db: Session = Depends(get_db)`. B008
+# normally flags a function call in a default argument, which is sound advice
+# everywhere except here: FastAPI resolves these per request, not once at
+# import. Listing them keeps B008 active for genuine mistakes.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.File",
+    "fastapi.Form",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Alembic generates these and imports `sqlalchemy as sa` whether a given
+# migration uses it or not.
+"alembic/versions/*" = ["F401", "I001"]
+"alembic/env.py" = ["F401"]
