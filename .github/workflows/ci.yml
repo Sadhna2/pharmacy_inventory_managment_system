@@ -1,0 +1,100 @@
+# Runs on every pull request and every push to main.
+#
+# The point is that main is always deployable: a PR cannot merge unless the
+# migrations apply cleanly, the ledger invariants hold, and the frontend
+# type-checks. Nothing here touches AWS.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same PR cancels the first — no point testing a commit
+# that has already been superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — lint, migrate, test
+    runs-on: ubuntu-latest
+
+    services:
+      # A throwaway Postgres per run. Migrations apply from scratch every
+      # time, which is what catches a migration that only works because your
+      # local database already had the column.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pharmacy
+          POSTGRES_PASSWORD: pharmacy
+          POSTGRES_DB: pharmacy
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pharmacy"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg://pharmacy:pharmacy@localhost:5432/pharmacy
+      SECRET_KEY: ci-only-not-a-real-key
+      SEED_PASSWORD: CiTestPassword@2026
+      ENV: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install dependencies
+        working-directory: api
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        working-directory: api
+        run: ruff check .
+
+      - name: Apply migrations
+        working-directory: api
+        run: alembic upgrade head
+
+      - name: Seed
+        working-directory: api
+        run: python -m app.seed.bootstrap
+
+      - name: Test
+        working-directory: api
+        run: pytest -q
+
+  frontend:
+    name: Frontend — lint, typecheck, build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      # `npm run build` is `tsc -b && vite build`, so this covers the
+      # typecheck and proves the bundle actually compiles.
+      - name: Typecheck and build
+        working-directory: web
+        run: npm run build
