@@ -21,7 +21,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_BASE: ghcr.io/${{ github.repository }}
 
 jobs:
   build:
@@ -30,9 +29,20 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      image_base: ${{ steps.names.outputs.image_base }}
 
     steps:
       - uses: actions/checkout@v4
+
+      # An image reference must be lowercase, and github.repository carries the
+      # owner's capitalisation. Interpolating it directly produced a tag Docker
+      # rejected before the build even started.
+      - name: Compute the image base
+        id: names
+        run: |
+          echo "image_base=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" \
+            >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -50,8 +60,8 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_BASE }}-api:${{ github.sha }}
-            ${{ env.IMAGE_BASE }}-api:latest
+            ${{ steps.names.outputs.image_base }}-api:${{ github.sha }}
+            ${{ steps.names.outputs.image_base }}-api:latest
           # Layer cache lives in Actions, so an unchanged requirements.txt
           # means pip install is skipped entirely on the next run.
           cache-from: type=gha,scope=api
@@ -64,8 +74,8 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_BASE }}-web:${{ github.sha }}
-            ${{ env.IMAGE_BASE }}-web:latest
+            ${{ steps.names.outputs.image_base }}-web:${{ github.sha }}
+            ${{ steps.names.outputs.image_base }}-web:latest
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
@@ -102,8 +112,8 @@ jobs:
             echo '${{ secrets.GITHUB_TOKEN }}' \
               | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-            export API_IMAGE="${{ env.IMAGE_BASE }}-api:${{ github.sha }}"
-            export WEB_IMAGE="${{ env.IMAGE_BASE }}-web:${{ github.sha }}"
+            export API_IMAGE="${{ needs.build.outputs.image_base }}-api:${{ github.sha }}"
+            export WEB_IMAGE="${{ needs.build.outputs.image_base }}-web:${{ github.sha }}"
             # Persist the tags so a manual `docker compose up` on the box uses
             # the same images CI deployed, rather than drifting to :latest.
             # `sed -i` fails outright on a missing file, and on a first deploy
