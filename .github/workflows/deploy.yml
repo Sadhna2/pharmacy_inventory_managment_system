@@ -79,10 +79,22 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 
+  # Runs ON the box, via a self-hosted runner registered to this repository.
+  #
+  # The runner polls GitHub outbound, so nothing new is exposed: port 22 stays
+  # shut to everyone but the maintainer's own address, and there is no AWS
+  # credential stored in GitHub at all.
+  #
+  # SAFETY: this repository is public, and a self-hosted runner will execute
+  # whatever a workflow tells it to. That is only safe because this workflow
+  # triggers on `push` to main and manual dispatch — never on `pull_request`.
+  # A fork cannot push to main, so a fork cannot reach this machine. CI, which
+  # does run on pull requests, stays on GitHub-hosted runners.
+  # Do not add a pull_request trigger to this file.
   deploy:
     name: Roll out to EC2
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, pharmacy-prod]
     permissions:
       contents: read
       packages: read      # the box pulls the images this token published
@@ -90,47 +102,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy.pem
-          chmod 600 ~/.ssh/deploy.pem
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Ship compose files
-        run: |
-          scp -i ~/.ssh/deploy.pem docker-compose.yml docker-compose.prod.yml \
-            ec2-user@${{ secrets.EC2_HOST }}:~/
-
       - name: Pull, migrate, restart
+        env:
+          API_IMAGE: ${{ needs.build.outputs.image_base }}-api:${{ github.sha }}
+          WEB_IMAGE: ${{ needs.build.outputs.image_base }}-web:${{ github.sha }}
         run: |
-          ssh -i ~/.ssh/deploy.pem ec2-user@${{ secrets.EC2_HOST }} bash -euo pipefail <<'REMOTE'
-            # A package published by GITHUB_TOKEN is private until someone makes
-            # it otherwise, so the box cannot pull anonymously. Authenticating
-            # is one line and does not care either way, which beats depending on
-            # a visibility setting nobody will remember is load-bearing.
-            echo '${{ secrets.GITHUB_TOKEN }}' \
-              | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+          set -euo pipefail
 
-            export API_IMAGE="${{ needs.build.outputs.image_base }}-api:${{ github.sha }}"
-            export WEB_IMAGE="${{ needs.build.outputs.image_base }}-web:${{ github.sha }}"
-            # Persist the tags so a manual `docker compose up` on the box uses
-            # the same images CI deployed, rather than drifting to :latest.
-            # `sed -i` fails outright on a missing file, and on a first deploy
-            # there is no ~/.env yet.
-            touch ~/.env
-            sed -i '/^API_IMAGE=/d;/^WEB_IMAGE=/d' ~/.env
-            echo "API_IMAGE=$API_IMAGE" >> ~/.env
-            echo "WEB_IMAGE=$WEB_IMAGE" >> ~/.env
+          # A package published by GITHUB_TOKEN is private until someone makes
+          # it otherwise, so the box cannot pull anonymously. Authenticating is
+          # one line and does not care either way, which beats depending on a
+          # visibility setting nobody will remember is load-bearing.
+          echo '${{ secrets.GITHUB_TOKEN }}' \
+            | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
-            # `up` runs the migrate service first and waits for it to succeed,
-            # so the API never serves against a half-migrated schema.
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-            docker image prune -f
-          REMOTE
+          # Deploy from the home directory rather than this checkout. The
+          # production secrets — database password, SECRET_KEY, SITE_ADDRESS —
+          # live in ~/.env, and compose reads .env from the directory holding
+          # the compose file. Running it here would start the stack with every
+          # one of those silently unset.
+          cp docker-compose.yml docker-compose.prod.yml ~/
+          cd ~
 
-      - name: Smoke test
+          # Persist the tags so a manual `docker compose up` on the box uses the
+          # same images CI deployed, rather than drifting to :latest.
+          touch ~/.env
+          sed -i '/^API_IMAGE=/d;/^WEB_IMAGE=/d' ~/.env
+          printf 'API_IMAGE=%s\nWEB_IMAGE=%s\n' "$API_IMAGE" "$WEB_IMAGE" >> ~/.env
+
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+          # `up` runs the migrate service first and waits for it to succeed, so
+          # the API never serves against a half-migrated schema.
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+          docker image prune -f
+
+      - name: Container state on failure
+        if: failure()
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=40
+
+  # Deliberately on a GitHub-hosted runner rather than the box. Checking the
+  # site from the machine that is serving it proves the containers are up; it
+  # does not prove anyone on the internet can reach them. This does.
+  verify:
+    name: Verify from outside
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Smoke test the public URL
         run: |
           for i in $(seq 1 12); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -141,9 +163,3 @@ jobs:
           done
           echo "::error::health check never returned 200 — deployment is unhealthy"
           exit 1
-
-      - name: Report failure detail
-        if: failure()
-        run: |
-          ssh -i ~/.ssh/deploy.pem ec2-user@${{ secrets.EC2_HOST }} \
-            'docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=40'
