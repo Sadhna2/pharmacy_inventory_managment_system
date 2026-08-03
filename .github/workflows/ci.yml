@@ -98,6 +98,21 @@ jobs:
           cat /tmp/uvicorn.log
           exit 1
 
+      # The browser's types are generated from this document, so a server-side
+      # rename has to reach the committed copy or the two describe different
+      # APIs while both compiling happily. That was a real gap: the frontend
+      # kept its own hand-written declarations and nothing compared them.
+      - name: API types are in sync with the schema
+        run: |
+          npx --yes openapi-typescript@7.13.0 \
+            http://127.0.0.1:8000/openapi.json -o /tmp/schema.fresh.d.ts
+          if ! diff -q /tmp/schema.fresh.d.ts web/src/lib/schema.d.ts >/dev/null; then
+            echo "::error::web/src/lib/schema.d.ts is stale — run 'npm run gen:api' in web/ and commit the result"
+            diff -u web/src/lib/schema.d.ts /tmp/schema.fresh.d.ts | head -60
+            exit 1
+          fi
+          echo "schema.d.ts matches the live OpenAPI document"
+
       - name: Test
         working-directory: api
         run: pytest -q
