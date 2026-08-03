@@ -4,6 +4,8 @@ Permissions are strings. Roles are bundles of them. Cost visibility is a
 permission, not a role — warehouse staff record stock but never see margins.
 """
 
+from typing import Literal
+
 # --- catalogue --------------------------------------------------------------
 
 PERMISSIONS: dict[str, str] = {
@@ -49,6 +51,16 @@ ADMIN = "ADMIN"
 MANAGER = "MANAGER"
 STAFF = "STAFF"
 CUSTOMER = "CUSTOMER"
+
+#: The four role codes as a closed set.
+#:
+#: Declared as a Literal rather than `str` so that it survives into the OpenAPI
+#: schema as a union. The browser generates its types from that schema, and a
+#: bare `str` there would widen `role` to "any string" on the client — losing
+#: the exhaustiveness check that stops a `switch` on role from silently missing
+#: a case. Roles are a fixed set here, so promising callers a fixed set is
+#: honest as well as useful.
+RoleCode = Literal["ADMIN", "MANAGER", "STAFF", "CUSTOMER"]
 
 ROLE_PERMISSIONS: dict[str, list[str]] = {
     ADMIN: list(PERMISSIONS),  # everything
