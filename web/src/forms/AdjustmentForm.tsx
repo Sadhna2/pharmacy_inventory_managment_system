@@ -155,7 +155,7 @@ export function AdjustmentForm({
               header: "Change",
               type: "number",
               placeholder: "-5",
-              width: "md:w-32",
+              width: "8rem",
             },
           ]}
         />

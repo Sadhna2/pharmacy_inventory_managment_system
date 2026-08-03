@@ -270,7 +270,7 @@ export function GoodsReceiptForm({
     <Modal
       open={open}
       onClose={onClose}
-      wide
+      wide="xl"
       title="Receive goods"
       description="Record what physically arrived, batch by batch."
       footer={
@@ -389,14 +389,14 @@ export function GoodsReceiptForm({
               header: "Quantity",
               type: "number",
               placeholder: "0",
-              width: "md:w-20",
+              width: "5rem",
             },
             {
               name: "cost",
               header: "Unit cost ₹",
               type: "number",
               placeholder: "0.00",
-              width: "md:w-24",
+              width: "6rem",
             },
             {
               // Printed on this carton, so it is captured while the carton is
@@ -406,20 +406,20 @@ export function GoodsReceiptForm({
               header: "MRP ₹",
               type: "number",
               placeholder: "Printed",
-              width: "md:w-24",
+              width: "6rem",
             },
             {
               name: "lot",
               header: "Batch no.",
               placeholder: "On the box",
-              width: "md:w-28",
+              width: "7rem",
               showFor: (p) => !p || p.tracking_mode !== "NONE",
             },
             {
               name: "expiry",
               header: "Expiry",
               type: "date",
-              width: "md:w-36",
+              width: "9.5rem",
               showFor: (p) => !p || p.tracking_mode === "LOT_EXPIRY",
             },
             ...(canCrossDock
@@ -428,7 +428,7 @@ export function GoodsReceiptForm({
                     name: "xdock",
                     header: "For branch",
                     type: "select" as const,
-                    width: "md:w-44",
+                    width: "11rem",
                     emptyLabel: "Keep here",
                     options: () => destinations,
                   },

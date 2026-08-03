@@ -269,7 +269,8 @@ export function Modal({
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
-  wide?: boolean;
+  /** `"xl"` for the goods receipt, whose seven line columns outgrow `wide`. */
+  wide?: boolean | "xl";
 }) {
   useEffect(() => {
     if (!open) return;
@@ -301,8 +302,10 @@ export function Modal({
           "relative flex max-h-[92dvh] w-full flex-col overflow-hidden bg-surface shadow-2xl",
           "rounded-t-2xl sm:rounded-xl",
           // Document forms carry up to five line columns beside the product
-          // name; 3xl squeezed the name down to an initial.
-          wide ? "sm:max-w-4xl" : "sm:max-w-lg",
+          // name; 3xl squeezed the name down to an initial. A receipt that can
+          // cross-dock carries seven and needs more still — below that width
+          // its line table scrolls sideways rather than compressing.
+          wide === "xl" ? "sm:max-w-6xl" : wide ? "sm:max-w-4xl" : "sm:max-w-lg",
         )}
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">

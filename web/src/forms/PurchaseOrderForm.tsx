@@ -180,7 +180,7 @@ export function PurchaseOrderForm({
               header: "Unit price ₹",
               type: "number",
               placeholder: "0.00",
-              width: "md:w-32",
+              width: "8rem",
             },
           ]}
         />

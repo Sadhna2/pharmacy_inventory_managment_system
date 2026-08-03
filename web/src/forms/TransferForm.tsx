@@ -233,7 +233,7 @@ export function TransferForm({
               name: "lot",
               header: "Batch",
               type: "select",
-              width: "md:w-56",
+              width: "14rem",
               emptyLabel: "Earliest expiry (FEFO)",
               options: batchesFor,
             },
