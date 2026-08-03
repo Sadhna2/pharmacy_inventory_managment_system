@@ -12,7 +12,7 @@ business ever crosses a border, `local()` becomes a lookup on the warehouse and
 every caller here already asks the right question.
 """
 
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 BUSINESS_TZ = ZoneInfo("Asia/Kolkata")
@@ -50,6 +50,24 @@ def local(moment: datetime) -> datetime:
 def local_date(moment: datetime) -> date:
     """The business day a movement belongs to."""
     return local(moment).date()
+
+
+def today() -> date:
+    """Today, as the shop reckons it. Use this, never `date.today()`.
+
+    `date.today()` reads the host clock, and the host is not the business. A
+    developer's laptop is on IST while the production container is on UTC, so
+    between 18:30 and midnight India time the two disagree about what day it
+    is — and every date-sensitive answer in the product shifts with them: which
+    batches count as expiring within 30 days, which deliveries were late, what
+    date lands on a new order, where a forecast horizon starts.
+
+    That is not a display quirk. A pharmacy in Mumbai closing at 22:00 would
+    have its evening's work filed under tomorrow, and the same query would give
+    a different answer depending on which machine ran it. The chain operates in
+    one timezone, so the business day is one thing, and this is it.
+    """
+    return local_date(datetime.now(UTC))
 
 
 def at_local(day: date, hour: int, minute: int = 0, second: int = 0) -> datetime:

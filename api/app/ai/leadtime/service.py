@@ -32,6 +32,7 @@ from statistics import median, pstdev
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.models.documents import GoodsReceipt, GoodsReceiptLine, PurchaseOrder
 from app.models.masters import Product, Supplier
 from app.services import settings as app_settings
@@ -234,7 +235,7 @@ def all_suppliers(
 ) -> list[LeadTimeStats]:
     lookback_days = lookback_days or app_settings.get(db, "leadtime.lookback_days")
     min_sample = app_settings.get(db, "leadtime.min_sample")
-    since = date.today() - timedelta(days=lookback_days) if lookback_days else None
+    since = clock.today() - timedelta(days=lookback_days) if lookback_days else None
     deliveries = load_deliveries(db, since=since)
 
     by_supplier: dict[int, list[Delivery]] = {}
@@ -258,7 +259,7 @@ def predict(db: Session, supplier_id: int, *, lookback_days: int | None = None) 
     the bad one, and cannot do both.
     """
     lookback_days = lookback_days or app_settings.get(db, "leadtime.lookback_days")
-    since = date.today() - timedelta(days=lookback_days) if lookback_days else None
+    since = clock.today() - timedelta(days=lookback_days) if lookback_days else None
     deliveries = load_deliveries(db, since=since, supplier_id=supplier_id)
     supplier = db.get(Supplier, supplier_id)
     name = supplier.name if supplier else f"Supplier {supplier_id}"
@@ -267,7 +268,7 @@ def predict(db: Session, supplier_id: int, *, lookback_days: int | None = None) 
         min_sample=app_settings.get(db, "leadtime.min_sample"),
     )
 
-    today = date.today()
+    today = clock.today()
     return {
         "stats": stats,
         "expected_date": today + timedelta(days=round(stats.median_days)),

@@ -638,7 +638,7 @@ def detect(
     load rather than leaving a stale alert someone has to dismiss.
     """
     cfg = Thresholds.load(db)
-    since = date.today() - timedelta(days=lookback_days)
+    since = clock.today() - timedelta(days=lookback_days)
     rows, products, warehouses = _load(db, since)
 
     findings: list[Anomaly] = []

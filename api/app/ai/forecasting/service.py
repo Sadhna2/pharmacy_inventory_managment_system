@@ -49,6 +49,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
+from app.core import clock
 from app.core.clock import BUSINESS_TZ
 from app.models.enums import MovementType, StockStatus
 from app.models.masters import Product, Warehouse
@@ -165,7 +166,7 @@ def _issues_query(since: date) -> Select:
 def load_series(
     db: Session, *, lookback_days: int = 730
 ) -> dict[tuple[int, int], dict[date, float]]:
-    since = date.today() - timedelta(days=lookback_days)
+    since = clock.today() - timedelta(days=lookback_days)
     series: dict[tuple[int, int], dict[date, float]] = {}
     for product_id, warehouse_id, day, units in db.execute(_issues_query(since)):
         series.setdefault((product_id, warehouse_id), {})[day] = float(units)
@@ -417,7 +418,7 @@ def forecast_one(
 ) -> Forecast | None:
     stockouts = _stockout_days(db, product.id, warehouse.id)
     values, dates, filled = build_daily(
-        observations, stockouts, end=date.today(),
+        observations, stockouts, end=clock.today(),
         lookback_days=lookback_days, max_fill_run=max_fill_run,
     )
     if values.size < MIN_DAYS or values.sum() == 0:
@@ -438,7 +439,7 @@ def forecast_one(
         warehouse_name=warehouse.name,
         method=method,
         daily=[round(float(v), 1) for v in daily],
-        start=date.today() + timedelta(days=1),
+        start=clock.today() + timedelta(days=1),
         accuracy=chosen,
         alternatives=[r for r in results if r.method != method],
         history_days=len(dates),

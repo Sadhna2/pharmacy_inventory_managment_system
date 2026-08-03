@@ -10,6 +10,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core import clock
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.models.documents import (
     DocumentStatus,
@@ -52,7 +53,7 @@ def create_purchase_order(
         supplier_id=supplier_id,
         warehouse_id=warehouse_id,
         status=DocumentStatus.DRAFT,
-        order_date=order_date or date.today(),
+        order_date=order_date or clock.today(),
         expected_date=expected_date,
         notes=notes,
         created_by=user_id,
@@ -360,7 +361,7 @@ def _resolve_lot(
     if product.tracking_mode == TrackingMode.LOT_EXPIRY and not expiry:
         raise ValidationError(f"{product.sku} requires an expiry date")
 
-    if expiry and isinstance(expiry, date) and expiry <= date.today():
+    if expiry and isinstance(expiry, date) and expiry <= clock.today():
         raise ValidationError(
             f"Batch {lot_code} of {product.sku} expired on {expiry} — "
             "expired stock must not be received"

@@ -5,7 +5,6 @@ there is no `ai.act` path to guard — acting on this happens in the reorder
 feature, which raises a draft purchase order and is gated separately.
 """
 
-from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -18,6 +17,7 @@ from app.ai.leadtime.schemas import (
     LeadTimeStatsOut,
     SupplierDeliveryOut,
 )
+from app.core import clock
 from app.core.deps import require_feature, require_permission
 from app.core.errors import NotFoundError
 from app.db.session import get_db
@@ -65,7 +65,7 @@ def list_lead_times(
     window = lookback_days or app_settings.get(db, "leadtime.lookback_days")
     stats = service.all_suppliers(db, lookback_days=window)
     return LeadTimeOut(
-        as_of=date.today(),
+        as_of=clock.today(),
         lookback_days=window,
         suppliers=[_to_out(s) for s in stats],
     )
@@ -92,7 +92,7 @@ def supplier_detail(
     deliveries = service.load_deliveries(db, supplier_id=supplier_id)
 
     return LeadTimeDetailOut(
-        as_of=date.today(),
+        as_of=clock.today(),
         lookback_days=window,
         stats=_to_out(prediction["stats"]),
         expected_date=prediction["expected_date"],

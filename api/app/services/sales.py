@@ -11,6 +11,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core import clock
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.models.documents import (
     DocumentStatus,
@@ -52,7 +53,7 @@ def create_sales_order(
         customer_id=customer_id,
         warehouse_id=warehouse_id,
         status=DocumentStatus.DRAFT,
-        order_date=order_date or date.today(),
+        order_date=order_date or clock.today(),
         notes=notes,
         created_by=user_id,
         is_interstate=interstate,

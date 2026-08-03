@@ -57,6 +57,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.forecasting import service as forecasting
 from app.ai.leadtime import service as leadtime
+from app.core import clock
 from app.models.documents import PurchaseOrder, PurchaseOrderLine
 from app.models.enums import (
     DocumentStatus,
@@ -427,7 +428,7 @@ def recommend(
         suggested = _round_to_pack(shortfall, sourcing) if shortfall > 0 else 0.0
 
         stockout_on = (
-            date.today() + timedelta(days=int(cover)) if demand > 0 else None
+            clock.today() + timedelta(days=int(cover)) if demand > 0 else None
         )
 
         # Written as a buyer would say it, and naming the supplier's spread
