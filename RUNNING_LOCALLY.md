@@ -91,8 +91,14 @@ What is happening:
 - `-d` — "detached", meaning it runs in the background and gives your
   Terminal back instead of filling it with logs
 
-**First time: 2–4 minutes** (it downloads PostgreSQL, Python, Node, Caddy).
-**After that: 10–30 seconds**, because everything unchanged is reused.
+**First time: 3–5 minutes** (it downloads PostgreSQL, Python, Node and Caddy,
+then builds the demo dataset — two years of trading history, about half a
+minute of that total).
+**After that: 10–30 seconds**, because everything unchanged is reused and the
+seed sees the data is already there and does nothing.
+
+This is the same stack, the same images and the same seed command that run on
+the server, so what you see here is what is deployed.
 
 ### Step 5 — Open it
 
@@ -196,9 +202,10 @@ to `http://localhost:8090`.
 The API probably has not finished starting. Wait 15 seconds and refresh. If it
 persists: `docker compose logs api --tail 50`.
 
-**"Database already seeded — skipping"**
-Not an error. The seed only runs on an empty database so it never overwrites
-your work. To force it, reset with `docker compose down -v`.
+**"Database already seeded — skipping" / "History already present — skipping"**
+Not errors. Each seed step checks whether it has already run, so starting the
+stack a second time leaves your work alone instead of doubling every balance.
+To build it fresh, reset with `docker compose down -v`.
 
 **Everything is confusing, just reset**
 
@@ -206,8 +213,8 @@ your work. To force it, reset with `docker compose down -v`.
 docker compose down -v && docker compose up -d --build
 ```
 
-Two minutes and you are back to a clean, known state. This is safe — nothing
-outside this folder is touched.
+A few minutes and you are back to a clean, known state — the same one the
+server builds. This is safe: nothing outside this folder is touched.
 
 ---
 

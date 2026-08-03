@@ -28,12 +28,13 @@ Idempotent. Re-running replaces the previous showcase rather than doubling it.
 """
 
 import argparse
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.db.session import SessionLocal
 from app.models.documents import (
     GoodsReceipt,
@@ -69,7 +70,7 @@ from app.models.masters import (
     Uom,
     Warehouse,
 )
-from app.models.stock import Lot, StockBalance, StockReservation
+from app.models.stock import Lot, StockBalance, StockMovement, StockReservation
 from app.services import ledger, procurement, recall, sales, transfers
 
 #: Stamped on every document this module creates, so a re-run can find and
@@ -85,7 +86,7 @@ class Ctx:
 
     def __init__(self, db: Session) -> None:
         self.db = db
-        self.today = date.today()
+        self.today = clock.today()
 
         def one(model, *where):
             row = db.scalar(select(model).where(*where))
@@ -831,6 +832,15 @@ def report(db: Session) -> None:
     print(f"  {'retired products':18} {retired}")
 
 
+def applied_rows(db: Session) -> int:
+    """Ledger rows a previous run of this module wrote."""
+    return db.scalar(
+        select(func.count()).select_from(StockMovement).where(
+            StockMovement.reference_type == TAG
+        )
+    ) or 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -838,9 +848,23 @@ def main() -> None:
         action="store_true",
         help="do not clear a previous showcase run first",
     )
+    parser.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="do nothing if the showcase has already been applied",
+    )
     args = parser.parse_args()
 
     with SessionLocal() as db:
+        # `clear` removes the documents but deliberately cannot remove ledger
+        # rows, so an unguarded re-run stacks a second damage event, a second
+        # customer return and a second write-off on top of the first. Harmless
+        # once; after twenty deploys the Movements screen is mostly duplicates.
+        applied = applied_rows(db)
+        if applied and args.if_empty:
+            print(f"Showcase already applied ({applied} ledger rows) — skipping.")
+            return
+
         if not args.keep:
             clear(db)
 

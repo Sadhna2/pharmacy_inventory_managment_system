@@ -7,12 +7,13 @@ The full 2-year synthetic history for forecasting is Layer 2 work (§15).
 """
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.core.config import settings
 from app.core.permissions import (
     ADMIN,
@@ -459,7 +460,7 @@ def _seed_opening_stock(db, products, warehouses, user_id: int) -> None:
         )
     )
 
-    today = date.today()
+    today = clock.today()
     # Three batches per tracked product: healthy, near-expiry, and long-dated.
     expiry_offsets = [420, 25, 730]
     quantities = [Decimal("500"), Decimal("120"), Decimal("300")]

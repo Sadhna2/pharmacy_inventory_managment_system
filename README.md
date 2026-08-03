@@ -7,9 +7,8 @@ deleted, and every balance you see is derived from it.
 **Status:** Layer 0 (spine), Layer 1 (operations) and four of the six Layer 2
 analysis features are complete and verified, along with an administrator
 settings screen that makes every AI threshold and feature switch tunable at
-runtime. 90 end-to-end tests, run against a live server and a real Postgres —
-two of them skip themselves when the seeded dataset has nothing to reorder,
-rather than asserting against data that happens not to exist.
+runtime. 96 tests — 90 end-to-end against a live server and a real Postgres,
+plus six on the business clock.
 
 Natural-language reporting and invoice OCR are designed but not built; both are
 shipped switched off and the API refuses their routes while the switch is off,
@@ -24,13 +23,31 @@ kept because they explain *why* a given line is written the way it is.
 
 ## Running it
 
+Two ways, and they produce **the same system**. Both build their data with the
+same command — `python -m app.seed.demo` — so the app a developer sees and the
+app on the server are the same app with the same rows in it.
+
+### The whole stack, exactly as deployed
+
+```bash
+cp .env.example .env && docker compose up
+```
+
+Postgres, the API and Caddy, built and wired the way production is. The first
+start migrates and seeds (~1 min); later starts reuse the volume and are
+instant. This is the closest thing to the live site you can run, and if you
+are checking whether something behaves the way it will on the server, check it
+here. Serves on http://localhost:8080.
+
+### Or natively, for a faster edit loop
+
 Nothing installs globally. Postgres runs as a project-local cluster on port **55432**
 with its data in `api/.pgdata`; Python lives in `api/.venv`. All three are gitignored.
 
 **1 — database**
 
 ```bash
-./scripts/db.sh start && cd api && .venv/bin/alembic upgrade head && SEED_PASSWORD='pick-something-here' .venv/bin/python -m app.seed.bootstrap
+./scripts/db.sh start && cd api && .venv/bin/alembic upgrade head && SEED_PASSWORD='pick-something-here' .venv/bin/python -m app.seed.demo
 ```
 
 **2 — API** (http://127.0.0.1:8000, docs at `/docs`)
@@ -45,30 +62,27 @@ cd api && .venv/bin/uvicorn app.main:app --port 8000
 npm run dev --prefix web
 ```
 
-**4 — synthetic trading history** (optional, ~30s — needed by everything under *Analysis*)
+### What the seed builds
 
-```bash
-cd api && .venv/bin/python -m app.seed.history --days 730
-```
+`app.seed.demo` runs three steps in order and skips any already applied, which
+is why the same command is safe in the container, in CI and on your laptop.
 
-Generates two years of sales, purchases, transfers and expiries across the
-central warehouse and all five branches, plus a handful of deliberately planted
-anomalies for the exception detector to find. Tagged `SYNTH`, so `--reset`
-removes exactly this and leaves the hand-built demo fixture alone. Without it
-the Analysis screens load fine and honestly report that there is not enough
-history to say anything.
+| step | what it adds | cost |
+|---|---|---|
+| `bootstrap` | 28 permissions, 4 roles, demo users, 12 products, 5 locations | instant |
+| `history --days 730` | two years of sales, purchases, transfers and expiries, plus planted anomalies for the exception detector | ~30s |
+| `showcase` | damaged stock, a customer return, a failed QC check, retired products, orders awaiting approval, recalls | instant |
 
-**5 — showcase states** (optional, instant — needed to see every filter do something)
+The third exists because the simulation models a chain that *works* — it never
+drops a carton or withdraws a product, so most of the status badges and half
+the filters had nothing behind them.
 
-```bash
-cd api && .venv/bin/python -m app.seed.showcase
-```
+The data is deterministic (fixed RNG seed), so a given commit produces the same
+history everywhere. It is anchored to today, so a database seeded last week
+holds batches a week nearer expiry — `--rebuild` regenerates.
 
-The simulation models a chain that works, so it never produces damaged stock, a
-customer return, a failed QC check, a retired product or an order waiting on
-approval. Those are most of the badges and half the filters. This adds one of
-each, through the ordinary services, so the status dropdowns have something
-behind every option.
+Run individual steps by hand if you want (`app.seed.history --reset`,
+`app.seed.showcase`); `demo` is just the three of them with the guards on.
 
 ### Tests
 
@@ -89,11 +103,24 @@ connections first, so you do **not** need to stop uvicorn. The full rebuild:
 
 ```bash
 ./scripts/db.sh reset
-cd api && .venv/bin/alembic upgrade head
-.venv/bin/python -m app.seed.bootstrap
-.venv/bin/python -m app.seed.history --days 730
-.venv/bin/python -m app.seed.showcase
+cd api && .venv/bin/alembic upgrade head && .venv/bin/python -m app.seed.demo
 ```
+
+Under Docker the equivalent is `docker compose down -v && docker compose up`.
+
+### Local and live
+
+The container start-up runs `alembic upgrade head && python -m app.seed.demo`,
+which is the line above. Business dates come from `app/core/clock.py`, pinned
+to `Asia/Kolkata`, rather than from `date.today()` — the server runs on UTC and
+a laptop does not, and for five and a half hours every evening they would
+otherwise disagree about what day it is and answer the same question
+differently. `TZ` is set on the containers too, so their logs read in the same
+timezone the app reasons in.
+
+What legitimately differs: the images are prebuilt in CI rather than on the box
+(2 GB cannot run `vite build`), Caddy is given a real hostname so it fetches a
+certificate, and the secrets are real. Nothing else.
 
 ---
 

@@ -36,6 +36,7 @@ from decimal import Decimal
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.core.clock import at_local
 from app.db.session import SessionLocal
 from app.models.documents import (
@@ -111,7 +112,7 @@ class Sim:
     def __init__(self, db: Session, days: int, seed: int) -> None:
         self.db = db
         self.rng = random.Random(seed)
-        self.today = date.today()
+        self.today = clock.today()
         self.start = self.today - timedelta(days=days)
         self.days = days
 
@@ -868,23 +869,40 @@ def reset(db: Session) -> None:
     db.commit()
 
 
+def generated_rows(db: Session) -> int:
+    """How many ledger rows a previous run of this script left behind."""
+    return db.scalar(
+        select(func.count()).select_from(StockMovement).where(
+            StockMovement.reference_type == TAG
+        )
+    ) or 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=730)
     parser.add_argument("--seed", type=int, default=20260801)
     parser.add_argument("--reset", action="store_true")
+    parser.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="do nothing if history already exists, instead of failing",
+    )
     args = parser.parse_args()
 
     with SessionLocal() as db:
         if args.reset:
             reset(db)
 
-        existing = db.scalar(
-            select(func.count()).select_from(StockMovement).where(
-                StockMovement.reference_type == TAG
-            )
-        )
+        existing = generated_rows(db)
         if existing:
+            # Two callers want opposite things here. A person re-running this
+            # by hand has almost certainly forgotten --reset and wants to be
+            # told. A container start-up step runs on every single deploy and
+            # must not turn "already seeded" into a failed rollout.
+            if args.if_empty:
+                print(f"History already present ({existing:,} rows) — skipping.")
+                return
             raise SystemExit(
                 f"{existing} generated movements already exist. "
                 "Re-run with --reset to replace them."
