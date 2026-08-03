@@ -51,11 +51,24 @@ npm run dev --prefix web
 cd api && .venv/bin/python -m app.seed.history --days 730
 ```
 
-Generates two years of sales, purchases, transfers and expiries across all six
-locations, plus a handful of deliberately planted anomalies for the exception
-detector to find. Tagged `SYNTH`, so `--reset` removes exactly this and leaves
-the hand-built demo fixture alone. Without it the Analysis screens load fine and
-honestly report that there is not enough history to say anything.
+Generates two years of sales, purchases, transfers and expiries across the
+central warehouse and all five branches, plus a handful of deliberately planted
+anomalies for the exception detector to find. Tagged `SYNTH`, so `--reset`
+removes exactly this and leaves the hand-built demo fixture alone. Without it
+the Analysis screens load fine and honestly report that there is not enough
+history to say anything.
+
+**5 — showcase states** (optional, instant — needed to see every filter do something)
+
+```bash
+cd api && .venv/bin/python -m app.seed.showcase
+```
+
+The simulation models a chain that works, so it never produces damaged stock, a
+customer return, a failed QC check, a retired product or an order waiting on
+approval. Those are most of the badges and half the filters. This adds one of
+each, through the ordinary services, so the status dropdowns have something
+behind every option.
 
 ### Tests
 
@@ -63,11 +76,24 @@ honestly report that there is not enough history to say anything.
 cd api && SEED_PASSWORD='the-same-value-you-seeded-with' .venv/bin/python -m pytest tests/ -q
 ```
 
+⚠️ The suite runs against `DATABASE_URL` — in CI that is a throwaway container,
+but locally it is **your dev database**, and it leaves its fixtures behind:
+`PROBE-…` products, `Temporary Depot` warehouses, draft orders and test recalls.
+They are harmless but they accumulate, and they will show up in a demo. Rebuild
+before showing the app to anyone (below).
+
 ### Starting over
 
 `./scripts/db.sh reset` drops and recreates the database. It terminates open
-connections first, so you do **not** need to stop uvicorn — but you do need to
-re-run the migrate + seed step afterwards.
+connections first, so you do **not** need to stop uvicorn. The full rebuild:
+
+```bash
+./scripts/db.sh reset
+cd api && .venv/bin/alembic upgrade head
+.venv/bin/python -m app.seed.bootstrap
+.venv/bin/python -m app.seed.history --days 730
+.venv/bin/python -m app.seed.showcase
+```
 
 ---
 

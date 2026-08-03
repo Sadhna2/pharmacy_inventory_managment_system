@@ -12,12 +12,18 @@ import { ConfirmDialog } from "@/components/confirm";
 import { Badge, Button, Card, Input, Select, StatusBadge } from "@/components/ui";
 
 /**
- * Expiry presets rather than a free date range.
+ * Expiry presets, with a date of your own at the end.
  *
  * Nobody stands at a shelf and computes a cut-off date. They ask "what goes
  * bad this month" — and, separately, "what is already dead and needs writing
  * off". The last one is its own filter because expired stock is not a longer
  * window, it is the opposite question.
+ *
+ * The presets cover the shelf. They do not cover the calendar: a quarter end,
+ * an audit date, the day a tender closes. `custom` is for those, and it sends
+ * the chosen date to the server as a date — converting it to a day count here
+ * would resolve "today" in the browser's timezone and the server would resolve
+ * it again in its own, which is an off-by-one nobody would ever look for.
  */
 const EXPIRY_WINDOWS = [
   { value: "", label: "Any expiry" },
@@ -26,6 +32,7 @@ const EXPIRY_WINDOWS = [
   { value: "90", label: "Expiring ≤ 90 days" },
   { value: "180", label: "Expiring ≤ 6 months" },
   { value: "expired", label: "Already expired" },
+  { value: "custom", label: "Expiring before…" },
 ] as const;
 
 export function Stock() {
@@ -33,7 +40,13 @@ export function Stock() {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [expiry, setExpiry] = useState("");
+  const [expiryBefore, setExpiryBefore] = useState("");
   const [page, setPage] = useState(1);
+
+  // A chosen-but-empty date would otherwise drop the filter silently and show
+  // every batch under a control that says it is narrowing them.
+  const custom = expiry === "custom";
+  const preset = custom || expiry === "expired" ? "" : expiry;
 
   // Typing sends a request per keystroke otherwise. 300ms is long enough to
   // finish a batch code and short enough that it still feels live.
@@ -45,14 +58,15 @@ export function Stock() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["balances", { warehouse, status, q, expiry, page }],
+    queryKey: ["balances", { warehouse, status, q, expiry, expiryBefore, page }],
     queryFn: () =>
       api.get<Page<Balance>>(
         `/api/v1/stock/balances${qs({
           warehouse_id: warehouse,
           status,
           q,
-          expiry_within_days: expiry === "expired" ? "" : expiry,
+          expiry_within_days: preset,
+          expiry_before: custom ? expiryBefore : "",
           expired: expiry === "expired" ? "true" : "",
           page,
           size: 25,
@@ -212,6 +226,7 @@ export function Stock() {
               setExpiry(e.target.value);
               setPage(1);
             }}
+            aria-label="Expiry window"
             className="min-w-0 flex-1 sm:w-auto sm:flex-none sm:min-w-[11rem]"
           >
             {EXPIRY_WINDOWS.map((w) => (
@@ -220,6 +235,19 @@ export function Stock() {
               </option>
             ))}
           </Select>
+
+          {custom && (
+            <Input
+              type="date"
+              value={expiryBefore}
+              onChange={(e) => {
+                setExpiryBefore(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Expiring on or before"
+              className="min-w-0 flex-1 sm:w-auto sm:flex-none sm:min-w-[10rem]"
+            />
+          )}
 
           <Select
             value={status}
@@ -234,6 +262,7 @@ export function Stock() {
             <option value="QUARANTINE">Quarantine</option>
             <option value="IN_TRANSIT">In transit</option>
             <option value="DAMAGED">Damaged</option>
+            <option value="RETURNED_PENDING">Returned — pending</option>
           </Select>
         </div>
 

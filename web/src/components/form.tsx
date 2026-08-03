@@ -22,6 +22,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -317,6 +318,13 @@ export interface LineColumn {
   header: string;
   placeholder?: string;
   type?: "text" | "number" | "date" | "select";
+  /**
+   * Track width as a CSS length — `"6rem"`, not a utility class.
+   *
+   * It has to be a length because the header and the input row are laid out
+   * from one generated `grid-template-columns`, and a class name cannot be
+   * summed into the row's minimum width. Same convention as DataTable.
+   */
   width?: string;
   /** Hide unless the chosen product needs it — e.g. batch on a tracked drug. */
   showFor?: (product: LineProduct | null) => boolean;
@@ -388,6 +396,35 @@ export function LineItems({
       ),
     );
 
+  /**
+   * One grid template, shared by the header and every input row.
+   *
+   * These used to be two flex rows that happened to list the same widths. They
+   * were free to disagree — the header cells could shrink while the input cells
+   * could not — so as soon as the columns outgrew the dialog the labels slid
+   * left of the boxes they name and the last column was cut off. Deriving both
+   * from a single template makes that failure unrepresentable: the only free
+   * track is the product name, and it resolves identically in both because both
+   * sit in the same width.
+   */
+  const DEFAULT_WIDTH = "7rem";
+  const PRODUCT_WIDTH = "13rem";
+  const ACTION_WIDTH = "2.25rem";
+  const GAP = 0.5;
+
+  const { template, minWidth } = useMemo(() => {
+    const widths = columns.map((c) => c.width ?? DEFAULT_WIDTH);
+    return {
+      template: [`minmax(${PRODUCT_WIDTH},1fr)`, ...widths, ACTION_WIDTH].join(" "),
+      // Below this the row scrolls sideways rather than crushing its columns.
+      // The row's own horizontal padding is in the sum because `border-box`
+      // counts it inside min-width.
+      minWidth: `calc(${[PRODUCT_WIDTH, ...widths, ACTION_WIDTH].join(" + ")} + ${
+        (columns.length + 1) * GAP + 1.5
+      }rem)`,
+    };
+  }, [columns]);
+
   const lineError = useMemo(() => {
     // The API reports line problems as `lines.0.quantity`; pull the index out
     // so the message can sit on the row that caused it.
@@ -401,23 +438,31 @@ export function LineItems({
 
   return (
     <div className="space-y-2">
-      <div className="overflow-hidden rounded-lg border border-line">
-        <div className="hidden bg-muted/60 px-3 py-2 md:flex md:gap-2">
-          <span className="flex-1 text-[11px] font-semibold tracking-wide text-ink-faint uppercase md:min-w-52">
+      {/* The dropdown of the product picker is portalled to <body> and fixed,
+          so it is not clipped by this scroll container and re-anchors on
+          scroll — see ProductPicker. */}
+      <div
+        className="rounded-lg border border-line max-md:overflow-hidden md:overflow-x-auto"
+        style={
+          {
+            "--line-cols": template,
+            "--line-min": minWidth,
+          } as CSSProperties
+        }
+      >
+        <div className="hidden bg-muted/60 px-3 py-2 md:grid md:min-w-[var(--line-min)] md:grid-cols-[var(--line-cols)] md:gap-2">
+          <span className="text-[11px] font-semibold tracking-wide text-ink-faint uppercase">
             Product
           </span>
           {columns.map((c) => (
             <span
               key={c.name}
-              className={cn(
-                "text-[11px] font-semibold tracking-wide text-ink-faint uppercase",
-                c.width ?? "w-28",
-              )}
+              className="truncate text-[11px] font-semibold tracking-wide text-ink-faint uppercase"
             >
               {c.header}
             </span>
           ))}
-          <span className="w-8" />
+          <span />
         </div>
 
         <div className="divide-y divide-line">
@@ -426,11 +471,9 @@ export function LineItems({
             // corrected the field, the old server error is stale.
             const problem = validate?.(line, index) ?? lineError[index] ?? null;
             return (
-            <div key={line.key} className="p-3">
-              <div className="flex flex-col gap-2 md:flex-row md:items-start">
-                {/* Floors the name column so a receipt's four value columns
-                    cannot crush it down to an unreadable initial. */}
-                <div className="min-w-0 flex-1 md:min-w-52">
+            <div key={line.key} className="p-3 md:min-w-[var(--line-min)]">
+              <div className="flex flex-col gap-2 md:grid md:grid-cols-[var(--line-cols)] md:items-start md:gap-2">
+                <div className="min-w-0">
                   {lockProduct?.(line, index) && line.product ? (
                     <div className="flex h-9.5 items-center justify-between gap-2 rounded-lg border border-line bg-muted/40 px-3">
                       <span className="min-w-0 truncate text-sm text-ink">
@@ -452,7 +495,7 @@ export function LineItems({
                 {columns.map((c) => {
                   const hidden = c.showFor && !c.showFor(line.product);
                   return (
-                    <div key={c.name} className={cn("shrink-0", c.width ?? "md:w-28")}>
+                    <div key={c.name} className="min-w-0">
                       {hidden ? (
                         <div className="hidden h-9.5 items-center justify-center rounded-lg border border-dashed border-line md:flex">
                           <span className="text-[11px] text-ink-faint">n/a</span>

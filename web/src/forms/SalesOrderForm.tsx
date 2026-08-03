@@ -152,7 +152,7 @@ export function SalesOrderForm({
               header: "Unit price ₹",
               type: "number",
               placeholder: "MRP",
-              width: "md:w-32",
+              width: "8rem",
             },
           ]}
         />
