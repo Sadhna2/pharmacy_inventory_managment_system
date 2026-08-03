@@ -121,6 +121,12 @@ class Sim:
         self.stock: dict[tuple[int, int], list[LotState]] = defaultdict(list)
         self.lot_seq = 0
         self.stats: dict[str, int] = defaultdict(int)
+        #: transfer id -> lines still on the road. A transfer's lines are given
+        #: independent travel times, so the document is only complete once the
+        #: last of them lands. Without this the ledger recorded the receipt but
+        #: the document stayed IN_TRANSIT for ever, and the Transfers screen
+        #: filled up with deliveries that had demonstrably already arrived.
+        self.in_flight: dict[int, int] = defaultdict(int)
 
         self._load()
 
@@ -437,6 +443,13 @@ class Sim:
                         status=StockStatus.IN_TRANSIT,
                         notes="Arrived",
                     )
+                    self.in_flight[item.transfer_id] -= 1
+                    if self.in_flight[item.transfer_id] == 0:
+                        transfer = self.db.get(StockTransfer, item.transfer_id)
+                        if transfer:
+                            transfer.status = DocumentStatus.COMPLETED
+                            transfer.received_at = self._stamp(day, hour=13)
+                        del self.in_flight[item.transfer_id]
                 if grn is not None:
                     self.db.add(
                         GoodsReceiptLine(
@@ -595,6 +608,7 @@ class Sim:
                         notes="In transit",
                     )
                     travel = self.rng.choice([1, 1, 2, 2, 3])
+                    self.in_flight[transfer.id] += 1
                     self.pending.append(
                         Pending(
                             arrives=day + timedelta(days=travel),
