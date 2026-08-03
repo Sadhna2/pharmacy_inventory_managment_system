@@ -136,6 +136,31 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
           docker image prune -f
 
+      # `up -d` does not print what the migrate container did, so a deploy that
+      # migrated and seeded looked exactly like one that skipped both. After a
+      # release specifically about the server holding the same data as a
+      # laptop, "it exited 0" was not enough to know whether it had.
+      - name: What the seed did
+        run: |
+          cd ~
+          echo "--- migrate container output ---"
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            logs migrate --no-log-prefix --tail=60 || true
+
+          echo
+          echo "--- what is actually in the database ---"
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            exec -T db psql -U pharmacy -d pharmacy -P pager=off -c "
+              select
+                (select count(*) from stock_movements)               as movements,
+                (select count(*) from products where is_active)      as products,
+                (select count(*) from products where not is_active)  as retired,
+                (select count(distinct status) from stock_balances
+                   where qty_on_hand > 0)                            as stock_statuses,
+                (select count(*) from purchase_orders)               as purchase_orders,
+                (select count(*) from recalls)                       as recalls;
+            " || true
+
       - name: Container state on failure
         if: failure()
         run: |
