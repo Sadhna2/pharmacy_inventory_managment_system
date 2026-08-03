@@ -30,19 +30,35 @@ services:
   # --- schema + demo data ---------------------------------------------------
   # Runs once and exits. The API waits for it to finish successfully, so the
   # app never starts against a half-migrated database.
+  #
+  # `app.seed.demo` is the same command the README tells a developer to run, on
+  # purpose. When this said `bootstrap` alone, the deployed site had the
+  # catalogue and nothing else — no sales, no analysis, every status filter
+  # empty — while anyone running the documented steps by hand got the full
+  # system. Both were "the app". Now there is one command and one dataset.
+  #
+  # Every step is guarded, so the first boot builds two years of history over a
+  # few minutes and every later one exits in under a second. Use
+  # `--rebuild` by hand to regenerate.
   migrate:
     build: ./api
     command: >
-      sh -c "alembic upgrade head && python -m app.seed.bootstrap"
+      sh -c "alembic upgrade head && python -m app.seed.demo"
     environment:
       DATABASE_URL: postgresql+psycopg://pharmacy:${POSTGRES_PASSWORD:-localdev}@db:5432/pharmacy
       SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-in-production}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       ENV: ${ENV:-development}
+      TZ: ${TZ:-Asia/Kolkata}
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
+    # Generating the history holds a few thousand pending rows at a time. The
+    # box has 2 GB and the API is not up yet while this runs, so this ceiling
+    # is headroom rather than a constraint — it is here to make an accidental
+    # runaway fail loudly instead of taking Postgres down with it.
+    mem_limit: 768m
 
   # --- backend --------------------------------------------------------------
   api:
@@ -52,6 +68,11 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-only-change-me-in-production}
       ENV: ${ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # The chain trades in one timezone. Business dates go through
+      # `app.core.clock`, which pins Asia/Kolkata regardless of this, so the
+      # answers are right either way — but a container logging in UTC while
+      # the app reasons in IST is a confusing hour to debug at 1am.
+      TZ: ${TZ:-Asia/Kolkata}
       # Caddy proxies the browser to this service on the same origin, so the
       # browser never makes a cross-origin request and CORS never applies.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}

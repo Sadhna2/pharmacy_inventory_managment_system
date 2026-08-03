@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.orm import Session, aliased
 
+from app.core import clock
 from app.core.deps import require_permission, scoped_warehouse_ids
 from app.core.errors import NotFoundError
 from app.db.session import get_db
@@ -96,7 +97,7 @@ def list_balances(
         # a subset of "expiring within 30 days", not something to hide from it.
         stmt = stmt.where(
             Lot.expiry_date.is_not(None),
-            Lot.expiry_date <= date.today() + timedelta(days=expiry_within_days),
+            Lot.expiry_date <= clock.today() + timedelta(days=expiry_within_days),
         )
     if expiry_before is not None:
         stmt = stmt.where(
@@ -104,12 +105,12 @@ def list_balances(
         )
     if expired is not None:
         stmt = stmt.where(
-            and_(Lot.expiry_date.is_not(None), Lot.expiry_date < date.today())
+            and_(Lot.expiry_date.is_not(None), Lot.expiry_date < clock.today())
             if expired
             # Untracked goods have no expiry at all and are not expired, so
             # they belong in the "not expired" set rather than being filtered
             # out by a bare date comparison.
-            else or_(Lot.expiry_date.is_(None), Lot.expiry_date >= date.today())
+            else or_(Lot.expiry_date.is_(None), Lot.expiry_date >= clock.today())
         )
     if only_positive:
         stmt = stmt.where(StockBalance.qty_on_hand > 0)
@@ -292,7 +293,7 @@ def expiring_stock(
     user: User = Depends(require_permission("stock.view")),
 ) -> list[ExpiringStockOut]:
     """Batches expiring within `days`. Pass days=0 for already-expired stock."""
-    cutoff = date.today() + timedelta(days=days)
+    cutoff = clock.today() + timedelta(days=days)
     stmt = (
         select(StockBalance, Product, Warehouse, Lot)
         .join(Product, Product.id == StockBalance.product_id)
@@ -325,7 +326,7 @@ def expiring_stock(
             lot_code=lt.lot_code,
             expiry_date=lt.expiry_date,
             qty_on_hand=b.qty_on_hand,
-            days_to_expiry=(lt.expiry_date - date.today()).days,
+            days_to_expiry=(lt.expiry_date - clock.today()).days,
         )
         for b, p, w, lt in db.execute(stmt).all()
     ]
@@ -384,7 +385,7 @@ def stock_summary(
         )
     ).one()
 
-    today = date.today()
+    today = clock.today()
     expiring = db.scalar(
         scope(
             select(func.count(func.distinct(StockBalance.lot_id)))
@@ -478,7 +479,7 @@ def list_lots(
         stmt = stmt.where(Lot.product_id == product_id)
     if expiring_within_days is not None:
         stmt = stmt.where(
-            Lot.expiry_date <= date.today() + timedelta(days=expiring_within_days)
+            Lot.expiry_date <= clock.today() + timedelta(days=expiring_within_days)
         )
 
     return [
@@ -490,7 +491,7 @@ def list_lots(
             expiry_date=lot.expiry_date,
             supplier_id=lot.supplier_id,
             received_at=lot.received_at,
-            days_to_expiry=(lot.expiry_date - date.today()).days
+            days_to_expiry=(lot.expiry_date - clock.today()).days
             if lot.expiry_date
             else None,
         )

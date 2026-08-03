@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.core.errors import InsufficientStock, ValidationError
 from app.models.enums import ReservationStatus, StockStatus, TrackingMode
 from app.models.masters import Product, Warehouse
@@ -80,7 +81,7 @@ def available(
         stmt = stmt.where(StockBalance.lot_id == lot_id)
     if product.tracking_mode == TrackingMode.LOT_EXPIRY and min_shelf_life_days > 0:
         stmt = stmt.where(
-            Lot.expiry_date > date.today() + timedelta(days=min_shelf_life_days)
+            Lot.expiry_date > clock.today() + timedelta(days=min_shelf_life_days)
         )
 
     return sum(
@@ -148,7 +149,7 @@ def allocate(
         if min_shelf_life_days > 0:
             # Never ship stock that expires before the customer can use it.
             stmt = stmt.where(
-                Lot.expiry_date > date.today() + timedelta(days=min_shelf_life_days)
+                Lot.expiry_date > clock.today() + timedelta(days=min_shelf_life_days)
             )
         stmt = stmt.order_by(Lot.expiry_date.asc(), Lot.received_at.asc())
     elif product.tracking_mode == TrackingMode.LOT:

@@ -5,13 +5,13 @@ well under a second, and a stored forecast is a forecast that silently goes
 stale — the one failure mode nobody notices until an order is wrong.
 """
 
-from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.ai.forecasting import service
 from app.ai.forecasting.schemas import AccuracyOut, ForecastListOut, ForecastOut
+from app.core import clock
 from app.core.deps import require_feature, require_permission
 from app.db.session import get_db
 from app.models.identity import User
@@ -70,6 +70,6 @@ def list_forecasts(
     )
     return ForecastListOut(
         horizon_days=horizon,
-        generated_for=date.today(),
+        generated_for=clock.today(),
         forecasts=[_to_out(f) for f in forecasts],
     )

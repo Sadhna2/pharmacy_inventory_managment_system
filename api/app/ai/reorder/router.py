@@ -26,6 +26,7 @@ from app.ai.reorder.schemas import (
     ReorderSummaryOut,
     SourcingOut,
 )
+from app.core import clock
 from app.core.deps import require_feature, require_permission
 from app.core.errors import NotFoundError, ValidationError
 from app.db.session import get_db
@@ -129,7 +130,7 @@ def list_recommendations(
     drafts.sort(key=lambda d: -d.estimated_cost)
 
     return ReorderReportOut(
-        generated_for=date.today(),
+        generated_for=clock.today(),
         horizon_days=horizon,
         summary=ReorderSummaryOut(**service.summarise(recommendations)),
         recommendations=[_to_out(r) for r in recommendations],
@@ -227,4 +228,4 @@ def leadtime_prediction(db: Session, supplier_id: int) -> date:
         .where(ProductSupplier.supplier_id == supplier_id)
         .limit(1)
     )
-    return date.today() + timedelta(days=int(link_days or 7))
+    return clock.today() + timedelta(days=int(link_days or 7))

@@ -70,17 +70,16 @@ jobs:
         working-directory: api
         run: alembic upgrade head
 
-      - name: Seed
+      # The same command the container start-up and the README use. Running a
+      # different subset here would mean CI passes against a dataset that
+      # exists nowhere else — which is how the analysis tests came to skip
+      # themselves for a while and the suite reported green having checked
+      # none of Layer 2. The generator takes a fixed RNG seed, so the same
+      # history is produced on every run and a failure means the code changed
+      # rather than the dice did.
+      - name: Seed the dataset
         working-directory: api
-        run: python -m app.seed.bootstrap
-
-      # Without this the nine analysis tests skip themselves and the suite
-      # reports green having checked none of Layer 2. The generator takes a
-      # fixed RNG seed, so the same history is produced on every run and a
-      # failure means the code changed rather than the dice did.
-      - name: Seed trading history
-        working-directory: api
-        run: python -m app.seed.history --days 730
+        run: python -m app.seed.demo --days 730
 
       # The suite is deliberately end-to-end: it exercises the mutation trigger,
       # the balance projection and the row locks under concurrent allocation,
