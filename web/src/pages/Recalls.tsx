@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ShieldAlert, Snowflake, Users } from "lucide-react";
+import { Building2, PackageX, ShieldAlert, Snowflake, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -16,6 +16,7 @@ import { date, qty } from "@/lib/format";
 import type { Lot, Page, Product, Recall, RecallImpact } from "@/lib/types";
 import { PageHeader } from "@/components/Shell";
 import { DataTable, type Column } from "@/components/DataTable";
+import { ConfirmDialog } from "@/components/confirm";
 import {
   Badge,
   Button,
@@ -32,6 +33,7 @@ export function Recalls() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [impact, setImpact] = useState<RecallImpact | null>(null);
+  const [closing, setClosing] = useState<Recall | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [productId, setProductId] = useState("");
@@ -138,6 +140,20 @@ export function Recalls() {
           {qty(row.qty_quarantined)}
         </span>
       ),
+    },
+    {
+      key: "actions",
+      header: "",
+      width: "7rem",
+      render: (row) =>
+        // A recall ends one way: the frozen stock is scrapped and the record
+        // is closed. Until this existed a recall could be started and never
+        // resolved, so the register only ever grew.
+        row.status === "CLOSED" || !can("recall.initiate") ? null : (
+          <Button size="sm" variant="danger" onClick={() => setClosing(row)}>
+            <PackageX className="size-3.5" /> Close
+          </Button>
+        ),
     },
   ];
 
@@ -247,6 +263,38 @@ export function Recalls() {
           )}
         </div>
       </Modal>
+
+      {/* ------------------------------------------------------- close recall */}
+      <ConfirmDialog
+        open={closing !== null}
+        onClose={() => setClosing(null)}
+        title="Close this recall"
+        description="The quarantined stock is scrapped and the batch leaves inventory for good."
+        confirmLabel="Scrap and close"
+        danger
+        path={`/api/v1/recalls/${closing?.id}/close`}
+        invalidate={["recalls", "lots"]}
+      >
+        {closing && (
+          <div className="space-y-2 rounded-lg border border-line bg-muted/40 px-3 py-2.5 text-[13px]">
+            <div className="flex justify-between gap-3">
+              <span className="text-ink-soft">Batch</span>
+              <span className="font-mono text-ink">{closing.lot_code}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-ink-soft">Currently frozen</span>
+              <span className="font-medium tnum text-danger">
+                {qty(closing.qty_quarantined)}
+              </span>
+            </div>
+            <p className="pt-1 text-ink-soft">
+              This writes a scrap line against every location still holding the
+              batch. The recall itself stays on the register — closing it is
+              recorded, not erased.
+            </p>
+          </div>
+        )}
+      </ConfirmDialog>
 
       {/* ----------------------------------------------------- impact report */}
       <Modal
