@@ -43,6 +43,13 @@ def list_balances(
         description="Batches expiring within this many days. Already-expired "
         "stock is always included — it is the most urgent case.",
     ),
+    expiry_before: date | None = Query(
+        None,
+        description="Batches expiring on or before this date. The open-ended "
+        "form of expiry_within_days, for a cut-off the presets do not cover — "
+        "a quarter end, an audit date. Sent as a date rather than a day count "
+        "so the cut-off is not re-derived from the caller's clock.",
+    ),
     expired: bool | None = Query(
         None, description="true = only expired batches; false = exclude them"
     ),
@@ -90,6 +97,10 @@ def list_balances(
         stmt = stmt.where(
             Lot.expiry_date.is_not(None),
             Lot.expiry_date <= date.today() + timedelta(days=expiry_within_days),
+        )
+    if expiry_before is not None:
+        stmt = stmt.where(
+            Lot.expiry_date.is_not(None), Lot.expiry_date <= expiry_before
         )
     if expired is not None:
         stmt = stmt.where(

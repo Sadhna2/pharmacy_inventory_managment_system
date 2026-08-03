@@ -4717,6 +4717,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Batches expiring within this many days. Already-expired stock is always included — it is the most urgent case. */
                 expiry_within_days?: number | null;
+                /** @description Batches expiring on or before this date. The open-ended form of expiry_within_days, for a cut-off the presets do not cover — a quarter end, an audit date. Sent as a date rather than a day count so the cut-off is not re-derived from the caller's clock. */
+                expiry_before?: string | null;
                 /** @description true = only expired batches; false = exclude them */
                 expired?: boolean | null;
                 only_positive?: boolean;
