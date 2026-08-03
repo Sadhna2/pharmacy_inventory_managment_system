@@ -239,7 +239,11 @@ function SupplierDetail({
                         {delivery.days}d
                       </td>
                       <td className="tnum px-3 py-1.5 text-right">
-                        {delivery.late_by === null ? (
+                        {delivery.late_by == null ? (
+                          // Nullish, not `=== null`: the field is optional in
+                          // the contract, so an omitted one arrives as
+                          // undefined and would otherwise fall through to the
+                          // comparison below and render "undefinedd".
                           <span className="text-ink-faint">—</span>
                         ) : delivery.late_by > 0 ? (
                           <span className="text-danger">+{delivery.late_by}d</span>

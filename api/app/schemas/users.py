@@ -2,12 +2,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.core.permissions import RoleCode
+
 
 class RoleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    code: str
+    code: RoleCode
     name: str
     description: str | None = None
     #: What the role can actually do. Shown when assigning one, so the choice
@@ -25,7 +27,7 @@ class UserListOut(BaseModel):
     email: str
     full_name: str
     role_id: int
-    role_code: str
+    role_code: RoleCode
     role_name: str
     warehouse_id: int | None = None
     warehouse_name: str | None = None

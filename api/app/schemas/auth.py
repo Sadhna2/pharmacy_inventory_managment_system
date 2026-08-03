@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.core.permissions import RoleCode
+
 
 class LoginRequest(BaseModel):
     model_config = ConfigDict(json_schema_extra={"example": {
@@ -25,7 +27,7 @@ class UserOut(BaseModel):
     id: int
     email: str
     full_name: str
-    role: str
+    role: RoleCode
     permissions: list[str]
     warehouse_id: int | None = None
     warehouse_name: str | None = None
