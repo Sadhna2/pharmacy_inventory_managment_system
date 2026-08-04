@@ -4,16 +4,20 @@ Multi-branch pharmacy chain — 1 central warehouse, 5 branches, retail + instit
 Built on an **append-only stock ledger**: no row in `stock_movements` is ever updated or
 deleted, and every balance you see is derived from it.
 
-**Status:** Layer 0 (spine), Layer 1 (operations) and four of the six Layer 2
-analysis features are complete and verified, along with an administrator
-settings screen that makes every AI threshold and feature switch tunable at
-runtime. 96 tests — 90 end-to-end against a live server and a real Postgres,
-plus six on the business clock.
+**Status:** Layer 0 (spine), Layer 1 (operations), five of the six Layer 2
+analysis features and **invoice intake** are complete and verified, along with
+an administrator settings screen that makes every AI threshold and feature
+switch tunable at runtime. 273 tests, most of them end-to-end against a live
+server and a real Postgres.
 
-Natural-language reporting and invoice OCR are designed but not built; both are
-shipped switched off and the API refuses their routes while the switch is off,
-so nothing half-finished is reachable. Sales invoicing and payment tracking are
-specified but not started — the system records what moved, not yet what is owed.
+Invoice intake photographs a distributor's invoice and fills in the goods
+receipt — the one place a language model earns its keep here, and the one place
+its output is checked by arithmetic before anyone sees it (below).
+
+Natural-language reporting is designed but not built; it is shipped switched
+off and the API refuses its routes while the switch is off, so nothing
+half-finished is reachable. Sales invoicing and payment tracking are specified
+but not started — the system records what moved, not yet what is owed.
 
 Code comments cite `ARCHITECTURE.md` by section. That file is the internal
 design reference and is deliberately not published here; the citations are
@@ -69,7 +73,7 @@ is why the same command is safe in the container, in CI and on your laptop.
 
 | step | what it adds | cost |
 |---|---|---|
-| `bootstrap` | 28 permissions, 4 roles, demo users, 12 products, 5 locations | instant |
+| `bootstrap` | 28 permissions, 4 roles, demo users, 33 products, 5 locations | instant |
 | `history --days 730` | two years of sales, purchases, transfers and expiries, plus planted anomalies for the exception detector | ~30s |
 | `showcase` | damaged stock, a customer return, a failed QC check, retired products, orders awaiting approval, recalls | instant |
 
@@ -83,6 +87,36 @@ holds batches a week nearer expiry — `--rebuild` regenerates.
 
 Run individual steps by hand if you want (`app.seed.history --reset`,
 `app.seed.showcase`); `demo` is just the three of them with the guards on.
+
+### Invoice intake (the AI feature)
+
+Optional, and off unless you give it a key. Get one from Google AI Studio and
+put it in `.env`:
+
+```bash
+GEMINI_API_KEY=your-key-here
+```
+
+Leave it empty and the feature switches *itself* off — the endpoint answers 503
+and every other screen works normally. Nothing else in the system depends on it.
+
+**To run it with no network at all**, point it at the recorded readings:
+
+```bash
+INTAKE_FIXTURE_DIR=fixtures/intake
+```
+
+Six invoices and what the model read from each are stored in
+`api/fixtures/intake/`, keyed by the SHA-256 of the image, so a reading is bound
+to the exact file that produced it. Only the *transcription* is replayed — the
+arithmetic checks, the GSTIN checksum, the batch-format comparison and the
+product matching all still run, because none of them ever made a network call.
+A demo on a dead uplink is the whole system with one recorded input, not a mock.
+
+One caveat worth knowing: matching an unfamiliar trade name (`OMEZ-20` →
+omeprazole) is a *second* model call and is not recorded, so offline it returns
+nothing and those lines come back for a human to pick. Nothing breaks; fewer
+rows fill themselves in.
 
 ### Tests
 
@@ -169,24 +203,48 @@ not the other. That is `stock.view_cost` as a *permission*, not a role.
    *Partially received* with the arithmetic on the row — `4 of 10` — rather
    than a status word with nothing behind it. Try receiving it into the wrong
    branch and the server refuses.
-5. **Stock.** Balances carry the full grain: product, location, bin, batch, status.
-6. **Analysis → Supplier lead times.** Apex Pharma Supply comes out *Erratic* —
+5. **Receive goods → Scan invoice.** Photograph a distributor's invoice and
+   fourteen lines of batch codes, expiries, quantities and rates fill
+   themselves in. Then look at what it *says about itself*: `'OMEZ-20 CAP' read
+   as 'Omeprazole 20mg'; check it against the carton` — the model named it, and
+   the row is filled in but flagged, never posted quietly.
+
+   Scan `inv_023` for the part worth showing. Its page carries two GSTINs, the
+   supplier's and ours, and the reading takes one character from the wrong one:
+   `24AACPA1086G1Z2`. Right shape, right length, right state code, a number no
+   human would query — and the fifteenth character is a mod-36 checksum over the
+   other fourteen, so it fails arithmetic that needs no answer key. **The model
+   is never asked to be right; it is asked to produce something that can be
+   checked.** The finding says a character is wrong and offers no correction,
+   because recomputing the check digit would assume the other fourteen are right
+   and hand somebody a second wrong number with a valid checksum.
+
+   Then fix a row and watch the panel above settle: pick the product for an
+   unmatched line and the count drops, the finding moves to *answered on the
+   form*, struck through. Findings about the **paper** — the checksum, the tax
+   split, arithmetic that does not add up — stay standing, because no amount of
+   typing changes what the supplier printed.
+
+   Nothing here moves stock. There is no code path from this endpoint to the
+   ledger; it returns a proposal and a person presses the same button as before.
+6. **Stock.** Balances carry the full grain: product, location, bin, batch, status.
+7. **Analysis → Supplier lead times.** Apex Pharma Supply comes out *Erratic* —
    7 days typically, 15 at worst, meeting its own promised date 49% of the time.
    Open it: the percentiles are backed by the actual purchase orders they came from.
-7. **Analysis → Replenishment**, then open the syringe line. The safety stock is
+8. **Analysis → Replenishment**, then open the syringe line. The safety stock is
    ~2,900 units and the workings show why: almost all of it is the *supply*
    variance term, i.e. that one distributor. Change supplier, and the branch
    holds a fraction of the stock. That is the demo's money shot.
-8. **Raise draft order**, then reload. The suggestion does not come back — the
+9. **Raise draft order**, then reload. The suggestion does not come back — the
    draft is netted off. It is still only a DRAFT, and a second person has to
    approve it.
-9. **Analysis → Exceptions.** ~90 findings out of 52,000 movements, including a
+10. **Analysis → Exceptions.** ~90 findings out of 52,000 movements, including a
    3am adjustment and three unexplained count variances on the same controlled
    drug at the same branch. Open one: it shows what it was measured against and
    the ledger rows behind it.
-10. **Analysis → Demand forecast.** Every series was backtested before it was
+11. **Analysis → Demand forecast.** Every series was backtested before it was
    shown — the table lists the methods that lost.
-11. Resize to a phone. Tables become card lists; the sidebar becomes a drawer.
+12. Resize to a phone. Tables become card lists; the sidebar becomes a drawer.
 
 ---
 
@@ -195,6 +253,9 @@ not the other. That is `stock.view_cost` as a *permission*, not a role.
 ```
 api/     FastAPI + SQLAlchemy 2.x + Alembic. app/services/ledger.py is the only write path.
   app/ai/       Layer 2. Reads the ledger, never writes to it.
+  app/ai/intake/  Invoice reading: service (the model call), validate (the checks
+                  that make a misread detectable), match (line to catalogue product).
+  fixtures/     Six invoices and their recorded readings, for a demo with no network.
   app/seed/     bootstrap.py (demo fixture) and history.py (2 years of synthetic trading).
   app/core/     tunables.py declares every setting once; the API and UI both render from it.
 web/     React 19 + Vite + Tailwind v4 + TanStack Query.
@@ -239,7 +300,14 @@ Three invariants worth knowing before changing anything:
 - **`app/ai/` is a read-only bolt-on.** Nothing under it writes to the ledger, and
   nothing under it is stored — every forecast, finding and recommendation is
   recomputed from `stock_movements` on request. Delete the whole directory and
-  the inventory system is unaffected. The one exception is the reorder feature's
-  "raise draft order", which creates a `DRAFT` purchase order through the same
-  service any human would use, under its own `ai.act` permission, and still
-  needs a second person to approve it.
+  the inventory system is unaffected. Two deliberate exceptions, both of which
+  go through the same service a human would and neither of which touches stock:
+  the reorder feature's "raise draft order" creates a `DRAFT` purchase order
+  under its own `ai.act` permission and still needs a second person to approve
+  it; and invoice intake records what a distributor calls a product on
+  `product_suppliers.supplier_sku`, once, after a person has answered it.
+
+  Invoice intake in particular **creates nothing** on its own. The endpoint
+  returns a proposal — there is no code path from it to `ledger.post_movement`,
+  which is why the worst outcome of a misread invoice is a form with a wrong
+  number in it that somebody corrects before pressing the button.
