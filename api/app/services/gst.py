@@ -37,6 +37,42 @@ def is_interstate(supply_state: str, recipient_state: str) -> bool:
     return supply_state.strip().upper() != recipient_state.strip().upper()
 
 
+#: The statutory GST state codes, keyed by the two-letter code this system
+#: stores on a warehouse, supplier or customer.
+#:
+#: The two live side by side because they answer to different masters. Every
+#: `state_code` column here holds the postal abbreviation, which is what people
+#: type and read; a GSTIN's first two characters are a *numeric* code from the
+#: same statute. Nothing converts between them until a GSTIN arrives from
+#: outside — which happens in exactly one place, `ai.intake.service`, when a
+#: photographed invoice is read.
+STATE_CODES: dict[str, str] = {
+    "JK": "01", "HP": "02", "PB": "03", "CH": "04", "UT": "05", "UK": "05",
+    "HR": "06", "DL": "07", "RJ": "08", "UP": "09", "BR": "10", "SK": "11",
+    "AR": "12", "NL": "13", "MN": "14", "MZ": "15", "TR": "16", "ML": "17",
+    "AS": "18", "WB": "19", "JH": "20", "OR": "21", "OD": "21", "CT": "22",
+    "CG": "22", "MP": "23", "GJ": "24", "DD": "26", "DN": "26", "MH": "27",
+    "KA": "29", "GA": "30", "LD": "31", "KL": "32", "TN": "33", "PY": "34",
+    "AN": "35", "TG": "36", "TS": "36", "AP": "37", "LA": "38",
+}
+
+
+def gstin_prefix_for_state(state_code: str) -> str | None:
+    """The numeric GSTIN prefix for a two-letter state code, or None.
+
+    This direction, not the reverse, because several states answer to two
+    abbreviations — `UT` and `UK` are both 05, `TG` and `TS` both 36 — so
+    translating a number back to letters would have to pick one and would
+    then disagree with a record that happened to store the other.
+
+    None means the code is not a state this table knows. The caller must treat
+    that as "unknown" and check nothing, never as "a different state":
+    inventing a tax finding out of an unrecognised code is how a validator
+    starts lying.
+    """
+    return STATE_CODES.get(state_code.strip().upper())
+
+
 def compute_line_tax(
     *,
     quantity: Decimal,

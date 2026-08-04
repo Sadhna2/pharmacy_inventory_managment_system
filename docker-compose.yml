@@ -76,6 +76,17 @@ services:
       # Caddy proxies the browser to this service on the same origin, so the
       # browser never makes a cross-origin request and CORS never applies.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      # Invoice scanning (app/ai/intake). Unset is a supported state: the
+      # endpoint answers 503 and the rest of the API is unaffected, so a
+      # deployment without a key is degraded rather than broken.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      # Replays stored extractions instead of calling out. Set this to
+      # `fixtures/intake` for a demo that must not depend on the venue's wifi:
+      # four recorded invoices ship in the image, and everything except the
+      # transcription — the arithmetic, the checksum, the matching — still
+      # runs. See api/fixtures/intake/README.md.
+      INTAKE_FIXTURE_DIR: ${INTAKE_FIXTURE_DIR:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

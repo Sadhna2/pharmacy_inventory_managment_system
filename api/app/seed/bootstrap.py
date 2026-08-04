@@ -6,6 +6,7 @@ The full 2-year synthetic history for forecasting is Layer 2 work (§15).
     python -m app.seed.bootstrap
 """
 
+import hashlib
 import os
 from datetime import timedelta
 from decimal import Decimal
@@ -186,6 +187,48 @@ def sync_roles(db: Session, perms: dict[str, Permission]) -> dict[str, Role]:
     db.flush()
     return roles
 
+
+
+def _digits(*parts: str) -> int:
+    """A stable number derived from text.
+
+    Not `hash()`. Python salts string hashing per process unless PYTHONHASHSEED
+    is pinned, so `hash(sku)` gives a different answer on every run — which
+    means the barcode printed on a product locally, in CI and on the server
+    were three different numbers for the same medicine. A seed that claims to
+    build one dataset everywhere cannot derive anything from `hash()`.
+    """
+    digest = hashlib.blake2b("|".join(parts).encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "big")
+
+
+# The formats manufacturers actually print, in the proportions a distributor's
+# invoice shows them. Not decoration: `learn_supplier_batch_shapes` reads the
+# lot codes already received from a supplier and `validate_invoice` notes any
+# code on a scanned invoice whose shape is unlike them. Seeded lots reading
+# `MET-500-B1` taught the vocabulary a shape no manufacturer uses, so every
+# real batch code arriving on a real invoice looked unfamiliar and the note
+# fired on all of them — a check that fires on everything says nothing.
+_BATCH_SHAPES = ["AA0000", "A00000", "AAA000", "0000AA", "AA00-00"]
+_BATCH_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+def _batch_code(sku: str, idx: int) -> str:
+    """A manufacturer-style batch code, the same one on every seed run."""
+    n = _digits(sku, str(idx))
+    shape = _BATCH_SHAPES[n % len(_BATCH_SHAPES)]
+    n //= len(_BATCH_SHAPES)
+    out = []
+    for ch in shape:
+        if ch == "A":
+            out.append(_BATCH_LETTERS[n % len(_BATCH_LETTERS)])
+            n //= len(_BATCH_LETTERS)
+        elif ch == "0":
+            out.append(str(n % 10))
+            n //= 10
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _sourcing_for(
@@ -383,6 +426,85 @@ def seed(db: Session) -> None:
         ("COT-100", "Absorbent Cotton 100g", None, "Consumables & Devices",
          "EA", TrackingMode.NONE, DrugSchedule.OTC,
          StorageCondition.AMBIENT, 12, "45.00", 100),
+
+        # --- what the distributors actually ship -------------------------
+        # The twelve above were chosen to exercise the *system* — one of each
+        # tracking mode, drug schedule and storage condition. They were never
+        # chosen to resemble a real pharmacy's shelf, and it showed the moment
+        # a scanned invoice was matched against them: fourteen lines read
+        # perfectly off the page and eight of them had nothing to match to,
+        # because no branch of this chain stocked telmisartan.
+        #
+        # These are the rest of what a distributor's invoice carries. Names
+        # are the generic ones a person would type; the trade names printed on
+        # real invoices — OMEZ-20, PANTOP-40, ASTHALIN — are deliberately NOT
+        # aliased here. Meeting one for the first time and having somebody
+        # answer it once is the behaviour worth showing, and pre-loading the
+        # answer would hide it.
+        ("PANTO-40", "Pantoprazole 40mg", "Pantoprazole Sodium",
+         "Gastrointestinal", "STRIP", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "145.00", 160),
+        ("PANTO-INJ", "Pantoprazole Injection 40mg", "Pantoprazole Sodium",
+         "Gastrointestinal", "VIAL", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "48.00", 60),
+        ("OMEZ-20", "Omeprazole 20mg", "Omeprazole", "Gastrointestinal",
+         "STRIP", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "72.00", 140),
+        ("TELMA-40", "Telmisartan 40mg", "Telmisartan", "Cardiovascular",
+         "STRIP", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "118.00", 130),
+        ("GLIMI-2", "Glimepiride 2mg", "Glimepiride", "Antidiabetic",
+         "STRIP", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "82.00", 110),
+        ("AZITH-500", "Azithromycin 500mg", "Azithromycin Dihydrate",
+         "Antibiotics", "STRIP", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "130.00", 90),
+        ("CEFTRI-1G", "Ceftriaxone Injection 1g", "Ceftriaxone Sodium",
+         "Antibiotics", "VIAL", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "70.00", 70),
+        ("MONTEK-10", "Montelukast 10mg", "Montelukast Sodium", "Respiratory",
+         "STRIP", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "140.00", 100),
+        ("SALBU-INH", "Salbutamol Inhaler", "Salbutamol Sulphate",
+         "Respiratory", "EA", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.AMBIENT, 12, "190.00", 60),
+        ("INS-HUM", "Human Insulin 40IU", "Human Insulin", "Cold Chain",
+         "VIAL", TrackingMode.LOT_EXPIRY, DrugSchedule.H,
+         StorageCondition.COLD_CHAIN, 5, "195.00", 45),
+        ("COUGH-100", "Cough Syrup 100ml", "Dextromethorphan Hydrobromide",
+         "Respiratory", "EA", TrackingMode.LOT_EXPIRY, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 12, "110.00", 120),
+        ("ANTACID-200", "Antacid Suspension 200ml",
+         "Magnesium Hydroxide + Simethicone", "Gastrointestinal", "EA",
+         TrackingMode.LOT_EXPIRY, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 12, "132.00", 100),
+        ("CALCI-D3", "Calcium + Vitamin D3", "Calcium Carbonate + Cholecalciferol",
+         "Vitamins & Supplements", "STRIP", TrackingMode.LOT_EXPIRY,
+         DrugSchedule.OTC, StorageCondition.AMBIENT, 12, "125.00", 140),
+        ("FEFOL", "Iron + Folic Acid", "Ferrous Fumarate + Folic Acid",
+         "Vitamins & Supplements", "STRIP", TrackingMode.LOT_EXPIRY,
+         DrugSchedule.OTC, StorageCondition.AMBIENT, 12, "55.00", 150),
+        ("DICLO-GEL", "Diclofenac Gel 30g", "Diclofenac Diethylamine",
+         "Analgesics", "EA", TrackingMode.LOT_EXPIRY, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 12, "86.00", 90),
+        ("BETADINE-100", "Povidone Iodine 100ml", "Povidone Iodine",
+         "Consumables & Devices", "EA", TrackingMode.LOT_EXPIRY,
+         DrugSchedule.OTC, StorageCondition.AMBIENT, 12, "100.00", 80),
+        ("COT-500", "Absorbent Cotton 500g", None, "Consumables & Devices",
+         "EA", TrackingMode.NONE, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 12, "195.00", 60),
+        ("GLOVES-M", "Surgical Gloves Medium", None, "Consumables & Devices",
+         "EA", TrackingMode.NONE, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 12, "350.00", 80),
+        ("N95-MASK", "N95 Mask", None, "Consumables & Devices",
+         "EA", TrackingMode.NONE, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 5, "310.00", 120),
+        ("THERMO-DIG", "Digital Thermometer", None, "Consumables & Devices",
+         "EA", TrackingMode.NONE, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 18, "200.00", 50),
+        ("GLUCO-STRIP", "Glucometer Strips", None, "Consumables & Devices",
+         "EA", TrackingMode.LOT_EXPIRY, DrugSchedule.OTC,
+         StorageCondition.AMBIENT, 12, "750.00", 40),
     ]
 
     products: dict[str, Product] = {
@@ -409,7 +531,7 @@ def seed(db: Session) -> None:
             gst_rate=Decimal(gst),
             mrp=Decimal(mrp),
             reorder_point=Decimal(reorder),
-            barcode=f"890{abs(hash(sku)) % 10_000_000_000:010d}",
+            barcode=f"890{_digits(sku) % 10_000_000_000:010d}",
             sourcing_policy=_sourcing_for(storage, sched),
         )
         db.add(product)
@@ -510,7 +632,7 @@ def _seed_opening_stock(db, products, warehouses, user_id: int) -> None:
         for idx, (offset, qty) in enumerate(zip(expiry_offsets, quantities, strict=True), start=1):
             lot = Lot(
                 product_id=product.id,
-                lot_code=f"{sku}-B{idx}",
+                lot_code=_batch_code(sku, idx),
                 mfg_date=today - timedelta(days=120),
                 expiry_date=today + timedelta(days=offset),
             )

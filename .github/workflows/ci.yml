@@ -112,15 +112,40 @@ jobs:
           fi
           echo "schema.d.ts matches the live OpenAPI document"
 
+      # `-rf` prints the failed-test summary even when the traceback is long,
+      # and `--durations` shows whether a run was unusually slow — which is the
+      # first thing worth knowing about an intermittent failure that does not
+      # reproduce on a developer machine.
       - name: Test
         working-directory: api
-        run: pytest -q
+        run: pytest -q -rf --durations=10
 
-      # Without this a failing test says "connection refused" and nothing about
-      # why the server fell over.
-      - name: API log on failure
-        if: failure()
-        run: cat /tmp/uvicorn.log
+      # These ran only `if: failure()`, which is precisely backwards for
+      # diagnosing a suite that fails intermittently: the failing run is the
+      # one you cannot compare against anything. Capturing on every run means
+      # the next red build can be diffed against the last green one.
+      - name: API log
+        if: always()
+        run: |
+          echo "--- uvicorn ---"
+          cat /tmp/uvicorn.log || true
+
+      - name: Database state after the run
+        if: always()
+        working-directory: api
+        run: |
+          psql -h localhost -U pharmacy -d pharmacy -P pager=off -c "
+            select
+              (select count(*) from stock_movements)                      as movements,
+              (select count(*) from stock_reservations
+                 where status = 'ACTIVE')                                 as active_reservations,
+              (select count(*) from refresh_tokens
+                 where revoked_at is not null)                            as revoked_tokens,
+              (select count(*) from recalls where status <> 'CLOSED')     as open_recalls,
+              (select count(*) from purchase_orders)                      as purchase_orders;
+          " || true
+        env:
+          PGPASSWORD: pharmacy
 
   frontend:
     name: Frontend — lint, typecheck, build

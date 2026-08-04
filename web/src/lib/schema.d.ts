@@ -1197,6 +1197,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/intake/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Invoice
+         * @description Read an invoice into a draft goods receipt. Creates nothing.
+         */
+        post: operations["read_invoice_api_v1_ai_intake_invoice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/intake/alias": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remember Alias
+         * @description Record what a distributor calls one of our products.
+         *
+         *     Called once, after a person resolves a line the catalogue could not. Every
+         *     later invoice from that distributor matches it exactly — which is why the
+         *     unmatched rate falls to nothing after the first delivery rather than
+         *     staying where it started.
+         */
+        post: operations["remember_alias_api_v1_ai_intake_alias_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/intake/open-orders/{supplier_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open Orders
+         * @description Orders a delivery from this supplier could be against.
+         *
+         *     Offered before the upload, because naming the order is what narrows product
+         *     matching from the whole catalogue to a dozen lines — the difference between
+         *     guessing and looking up.
+         */
+        get: operations["open_orders_api_v1_ai_intake_open_orders__supplier_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1562,6 +1631,30 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /** Body_read_invoice_api_v1_ai_intake_invoice_post */
+        Body_read_invoice_api_v1_ai_intake_invoice_post: {
+            /**
+             * File
+             * @description Photograph or PDF of the invoice
+             */
+            file: string;
+            /**
+             * Warehouse Id
+             * @description Where the goods are being received, if decided yet
+             */
+            warehouse_id?: number | null;
+            /** Supplier Id */
+            supplier_id?: number | null;
+            /** Purchase Order Id */
+            purchase_order_id?: number | null;
+        };
+        /** CandidateOut */
+        CandidateOut: {
+            /** Product Id */
+            product_id: number;
+            /** Label */
+            label: string;
+        };
         /**
          * CategoryIn
          * @example {
@@ -1725,6 +1818,71 @@ export interface components {
          */
         DocumentStatus: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PARTIALLY_RECEIVED" | "RECEIVED" | "IN_TRANSIT" | "ALLOCATED" | "PICKED" | "SHIPPED" | "COMPLETED" | "CANCELLED";
         /**
+         * DraftLineOut
+         * @description One invoice line, read and resolved as far as the catalogue allows.
+         */
+        DraftLineOut: {
+            /** Line No */
+            line_no: number;
+            /** Printed Name */
+            printed_name: string;
+            /** Batch No */
+            batch_no?: string | null;
+            /** Expiry Date */
+            expiry_date?: string | null;
+            /**
+             * Quantity
+             * @default 0
+             */
+            quantity: number;
+            /**
+             * Free Quantity
+             * @default 0
+             */
+            free_quantity: number;
+            /** Rate */
+            rate?: number | null;
+            /** Mrp */
+            mrp?: number | null;
+            /** Pack */
+            pack?: string | null;
+            /**
+             * Hsn
+             * @description HSN code as printed. Read by the validator, and returned so a product created from an unmatched line arrives with it already filled in — it is on the paper in front of the receiver, and looking it up is the reason a new product gets created with the field left blank.
+             */
+            hsn?: string | null;
+            /**
+             * Gst Rate
+             * @description GST percentage as printed, for the same reason.
+             */
+            gst_rate?: number | null;
+            /** Product Id */
+            product_id?: number | null;
+            /** Sku */
+            sku?: string | null;
+            /** Product Name */
+            product_name?: string | null;
+            /**
+             * Match Method
+             * @description supplier_alias, sku, exact_name, name_tokens or unmatched. Shown so a weak match can be styled differently from a certain one rather than both looking equally settled.
+             */
+            match_method: string;
+            /** Po Line Id */
+            po_line_id?: number | null;
+            /**
+             * Qty Outstanding
+             * @description Still to come on the purchase order, if received against one.
+             */
+            qty_outstanding?: number | null;
+            /**
+             * Candidates
+             * @description Offered when a line fits more than one product. A shortlist beats an empty box; a wrong guess beats neither.
+             */
+            candidates?: components["schemas"]["CandidateOut"][];
+            /** Flags */
+            flags?: components["schemas"]["FlagOut"][];
+        };
+        /**
          * DraftOrderOut
          * @description A purchase order this recommendation set would produce, before it exists.
          */
@@ -1809,6 +1967,28 @@ export interface components {
             enabled: {
                 [key: string]: boolean;
             };
+        };
+        /** FlagOut */
+        FlagOut: {
+            /** Field */
+            field: string;
+            /**
+             * Severity
+             * @description BLOCK, REVIEW or INFO
+             */
+            severity: string;
+            /** Message */
+            message: string;
+            /**
+             * Line No
+             * @description 1-based, matching the S.N. column on the paper. Null for a finding about the invoice header.
+             */
+            line_no?: number | null;
+            /**
+             * Suggestion
+             * @description A correction confident enough to offer, when one exists. Never applied automatically.
+             */
+            suggestion?: string | null;
         };
         /** ForecastListOut */
         ForecastListOut: {
@@ -2017,6 +2197,59 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IntakeSummaryOut */
+        IntakeSummaryOut: {
+            /** Lines */
+            lines: number;
+            /** Resolved */
+            resolved: number;
+            /** Unmatched */
+            unmatched: number;
+            /**
+             * Blocking
+             * @description Findings that must be dealt with before this can be posted.
+             */
+            blocking: number;
+            /**
+             * Ready
+             * @description Every line resolved and nothing blocking. Even then the receipt is submitted by a person, never by this endpoint.
+             */
+            ready: boolean;
+        };
+        /**
+         * InvoiceIntakeOut
+         * @description A proposed goods receipt. Nothing has been created.
+         */
+        InvoiceIntakeOut: {
+            /**
+             * Warehouse Id
+             * @description Where the goods land, when that is settled — from the order, the receiver's own branch, or the form. Null means nobody has said yet, which is allowed: reading the paper is what tells you what arrived.
+             */
+            warehouse_id?: number | null;
+            /** Supplier Id */
+            supplier_id?: number | null;
+            /** Purchase Order Id */
+            purchase_order_id?: number | null;
+            /** Supplier Invoice No */
+            supplier_invoice_no?: string | null;
+            /** Supplier Invoice Date */
+            supplier_invoice_date?: string | null;
+            /**
+             * Supplier Name Printed
+             * @description The supplier name as printed, which may not match the supplier record this was filed against.
+             */
+            supplier_name_printed?: string | null;
+            /** Supplier Gstin Printed */
+            supplier_gstin_printed?: string | null;
+            /** Lines */
+            lines: components["schemas"]["DraftLineOut"][];
+            /**
+             * Flags
+             * @description Findings about the invoice as a whole rather than one line.
+             */
+            flags?: components["schemas"]["FlagOut"][];
+            summary: components["schemas"]["IntakeSummaryOut"];
         };
         /** LeadTimeDetailOut */
         LeadTimeDetailOut: {
@@ -2883,6 +3116,28 @@ export interface components {
             workings: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * RememberAliasIn
+         * @description Teach the system what a distributor calls one of our products.
+         *
+         *     Sent after a person resolves an unmatched line by hand. This is what turns
+         *     the abbreviation problem from unsolvable into a one-off: a trade name like
+         *     `OMEZ-20` cannot be derived from `OMEPRAZOLE 20MG CAP` by any rule worth
+         *     trusting, but it only has to be answered once.
+         */
+        RememberAliasIn: {
+            /** Supplier Id */
+            supplier_id: number;
+            /** Product Id */
+            product_id: number;
+            /** Printed Name */
+            printed_name: string;
+            /**
+             * Unit Cost
+             * @description The rate printed on the line this was resolved from. Used only when the product is not linked to this distributor yet, where it becomes the link's cost — a real figure off the invoice rather than one derived from the MRP.
+             */
+            unit_cost?: number | string | null;
         };
         /** ReorderReportOut */
         ReorderReportOut: {
@@ -6303,6 +6558,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_invoice_api_v1_ai_intake_invoice_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_read_invoice_api_v1_ai_intake_invoice_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceIntakeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remember_alias_api_v1_ai_intake_alias_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RememberAliasIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_orders_api_v1_ai_intake_open_orders__supplier_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplier_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */

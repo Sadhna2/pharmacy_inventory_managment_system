@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Undo2 } from "lucide-react";
+import { Search, Undo2, X } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDebounced } from "@/lib/hooks";
@@ -43,10 +43,29 @@ export function Stock() {
   const [expiryBefore, setExpiryBefore] = useState("");
   const [page, setPage] = useState(1);
 
-  // A chosen-but-empty date would otherwise drop the filter silently and show
-  // every batch under a control that says it is narrowing them.
   const custom = expiry === "custom";
   const preset = custom || expiry === "expired" ? "" : expiry;
+
+  /**
+   * Switch to a chosen date, or back to the preset list.
+   *
+   * The date is seeded rather than left blank, because a blank one made the
+   * filter a no-op that looked applied: picking "Expiring before…" sent no
+   * expiry parameter at all, so the table went on showing every batch under a
+   * control that claimed to be narrowing them. Nothing on screen said the
+   * filter was waiting for a second input. Ninety days matches the middle
+   * preset, so the list changes the instant it is chosen and the date is then
+   * edited rather than composed from nothing.
+   */
+  const chooseExpiry = (value: string) => {
+    setExpiry(value);
+    if (value === "custom" && !expiryBefore) {
+      const ninety = new Date();
+      ninety.setDate(ninety.getDate() + 90);
+      setExpiryBefore(ninety.toISOString().slice(0, 10));
+    }
+    setPage(1);
+  };
 
   // Typing sends a request per keystroke otherwise. 300ms is long enough to
   // finish a batch code and short enough that it still feels live.
@@ -220,33 +239,56 @@ export function Stock() {
             ))}
           </Select>
 
-          <Select
-            value={expiry}
-            onChange={(e) => {
-              setExpiry(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Expiry window"
-            className="min-w-0 flex-1 sm:w-auto sm:flex-none sm:min-w-[11rem]"
-          >
-            {EXPIRY_WINDOWS.map((w) => (
-              <option key={w.value} value={w.value}>
-                {w.label}
-              </option>
-            ))}
-          </Select>
-
-          {custom && (
-            <Input
-              type="date"
-              value={expiryBefore}
-              onChange={(e) => {
-                setExpiryBefore(e.target.value);
-                setPage(1);
-              }}
-              aria-label="Expiring on or before"
-              className="min-w-0 flex-1 sm:w-auto sm:flex-none sm:min-w-[10rem]"
-            />
+          {/*
+            One slot either way. Choosing a date used to *add* a second control
+            beside this one, so the row grew and everything after it shifted
+            along — and expiry became the only filter here made of two boxes
+            when every other one is a single control. The date takes this slot
+            over instead, and the × hands it back to the preset list.
+          */}
+          {custom ? (
+            <div
+              className={cn(
+                "flex h-9.5 min-w-0 flex-1 items-center gap-1.5 rounded-lg",
+                "border border-line bg-surface pl-3 pr-1.5 text-sm",
+                "focus-within:border-brand focus-within:ring-3 focus-within:ring-brand-ring",
+                "sm:w-auto sm:flex-none sm:min-w-[11rem]",
+              )}
+            >
+              <span className="shrink-0 text-ink-soft">Before</span>
+              <input
+                type="date"
+                autoFocus
+                value={expiryBefore}
+                onChange={(e) => {
+                  setExpiryBefore(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Expiring on or before"
+                className="min-w-0 flex-1 bg-transparent text-ink outline-none"
+              />
+              <button
+                type="button"
+                aria-label="Back to expiry presets"
+                onClick={() => chooseExpiry("")}
+                className="shrink-0 rounded p-1 text-ink-faint hover:bg-muted hover:text-ink"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ) : (
+            <Select
+              value={expiry}
+              onChange={(e) => chooseExpiry(e.target.value)}
+              aria-label="Expiry window"
+              className="min-w-0 flex-1 sm:w-auto sm:flex-none sm:min-w-[11rem]"
+            >
+              {EXPIRY_WINDOWS.map((w) => (
+                <option key={w.value} value={w.value}>
+                  {w.label}
+                </option>
+              ))}
+            </Select>
           )}
 
           <Select

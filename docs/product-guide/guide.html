@@ -576,12 +576,12 @@ figcaption { max-width: 42rem; }
   </p>
 
   <div class="numbers">
-    <div><b>17</b><span>screens</span></div>
-    <div><b>85</b><span>API endpoints</span></div>
-    <div><b>44</b><span>database tables</span></div>
+    <div><b>14</b><span>screens</span></div>
+    <div><b>61</b><span>API endpoints</span></div>
+    <div><b>41</b><span>database tables</span></div>
     <div><b>53,013</b><span>stock movements</span></div>
     <div><b>730</b><span>days of history</span></div>
-    <div><b>87</b><span>tests passing</span></div>
+    <div><b>90</b><span>tests passing</span></div>
   </div>
 </header>
 
@@ -838,7 +838,8 @@ figcaption { max-width: 42rem; }
         <tr><td><b>Available</b></td><td>On the shelf, unexpired, unrestricted</td><td class="yes">Yes</td></tr>
         <tr><td><b>Quarantined</b></td><td>Held under a recall or waiting on a quality check</td><td class="no">No</td></tr>
         <tr><td><b>In transit</b></td><td>Dispatched from one branch, not yet received at the other</td><td class="no">Not yet</td></tr>
-        <tr><td><b>Expired</b></td><td>Past its expiry date; awaiting write-off</td><td class="no">No</td></tr>
+        <tr><td><b>Damaged</b></td><td>Physically present and countable, but not fit to dispense</td><td class="no">No</td></tr>
+        <tr><td><b>Returned, pending</b></td><td>Came back from a customer, waiting to be inspected</td><td class="no">Not yet</td></tr>
       </tbody>
     </table>
   </div>
@@ -848,6 +849,11 @@ figcaption { max-width: 42rem; }
       warehouse for Ahmedabad, the stock is no longer at Mumbai and has not arrived
       at Ahmedabad. Systems that ignore this either double-count it or lose it for a
       day. Here it stays visible, owned by nobody, until someone receives it.</p>
+    <p><b>Expiry is not one of these.</b> An expired batch is not a separate
+      status — it is ordinary available stock whose batch has passed its date, which
+      the allocation rule then refuses to pick and the expiry watchlist surfaces
+      before it gets there. Writing it off posts a movement out of stock, so the
+      loss is a ledger line with a reason rather than a quantity quietly changing.</p>
   </div>
 
   <figure class="shot">
@@ -919,7 +925,58 @@ figcaption { max-width: 42rem; }
   <div class="note">
     <p><b>Why one person cannot do all three.</b> Separating who asks for money to
       be spent from who agrees to spend it is the oldest control in accounting. The
-      rule is enforced by the server, not by the screen hiding a button.</p>
+      rule is enforced by the server, not by the screen hiding a button — and it is
+      checked on <em>identity</em>, not on role, so an administrator who raised the
+      order is refused exactly like anyone else. A separation of duties that a role
+      can override is not a separation of duties.</p>
+  </div>
+
+  <h3>Receiving goods — start from the order</h3>
+  <p>
+    The receipt form is deliberately <b>order-first</b>. You pick the approved
+    purchase order before anything else, and the form fills itself in from it: the
+    destination, the products, the quantities still outstanding and the price that
+    was agreed when the order was placed.
+  </p>
+  <p>
+    What is left to type is only what the order genuinely cannot know — the
+    supplier's invoice number, and the <b>batch and expiry printed on the carton</b>,
+    which do not exist until the goods are manufactured.
+  </p>
+
+  <ul class="does">
+    <li><b>Each line shows what the order still expects.</b> Ordered, already
+      received, outstanding. The quantity box starts at the outstanding figure, so
+      the common case is to confirm rather than to type.</li>
+    <li><b>Short deliveries are normal, not an error.</b> Receive 4 of 10 and the
+      order becomes <b>Partially received</b>, with the arithmetic on the row —
+      <span class="mono">4 of 10</span> — rather than a status word with nothing
+      behind it. The remaining 6 stay outstanding for the next delivery.</li>
+    <li><b>Extra lines can be added.</b> Distributors send free goods and samples
+      that were never on the order; those get received alongside it rather than
+      forcing someone to raise a fake order for them.</li>
+    <li><b>The destination is locked to the order.</b> Receiving into the wrong
+      branch is refused by the server. Left unchecked it books stock to a location
+      that never saw it <em>and</em> closes an order that was never delivered — two
+      wrong balances from one mis-click.</li>
+    <li><b>Batch and expiry are validated as you type</b>, on the line that is
+      wrong, for products that are batch-tracked. A line the server would reject is
+      refused while you are still looking at the field.</li>
+  </ul>
+
+  <div class="how">
+    <p>What the colours mean</p>
+    <p>
+      Status colour carries one meaning everywhere in the product, and purchasing is
+      where it matters most. <b>Green means finished.</b> <b>Amber means unfinished
+      and yours to move.</b> <b>Blue means it is with somebody else.</b>
+    </p>
+    <p>
+      That is why an <em>approved</em> order is amber rather than green. Approval is
+      authorisation, not arrival — the goods are still on a lorry, and the order is
+      still work waiting for you. It only turns green when everything ordered has
+      actually been received.
+    </p>
   </div>
 </section>
 
@@ -1409,9 +1466,20 @@ figcaption { max-width: 42rem; }
         receipt.
       </p>
       <p>
-        It will <b>never post to the ledger by itself</b>. A person confirms every
-        line before anything is recorded, because a misread expiry date is a patient
-        safety problem, not a data-entry problem.
+        <b>We measured this before deciding to build it.</b> Fifty invoices were
+        generated across different layouts, fonts, column sets, tax presentations and
+        scan qualities — with the correct answer written <em>first</em> and the
+        document rendered from it, so the answer key cannot itself be wrong. A
+        current vision model reads <b>88% of them with no errors at all</b>, and gets
+        batch number, rate and quantity right every single time, without dropping or
+        inventing a line across 462 of them.
+      </p>
+      <p>
+        That result is the argument for the review step rather than against the
+        feature. Roughly one invoice in eight needs a correction — a queue a person
+        can work through, and nowhere near good enough to book stock unattended. It
+        will <b>never post to the ledger by itself</b>, because a misread expiry date
+        is a patient safety problem, not a data-entry problem.
       </p>
     </div>
   </div>
@@ -1507,8 +1575,10 @@ figcaption { max-width: 42rem; }
       The Analysis layer compares that promise against what they actually did.</li>
     <li><b>Customers</b> carry an address, which is what decides how GST splits on
       their invoices.</li>
-    <li><b>Locations</b> are the warehouse and the four branches, each with its own
-      shelves and cold-chain storage.</li>
+    <li><b>Locations</b> are the central warehouse and five branches across two
+      states, each with its own shelves and cold-chain storage. Two states is not
+      decoration &mdash; it is what makes the interstate GST path real rather than
+      theoretical.</li>
     <li><b>Records are retired, never deleted.</b> A supplier you stop using is
       marked inactive — deleting it would orphan two years of purchase orders and
       break the history everything else depends on.</li>
@@ -1681,9 +1751,9 @@ figcaption { max-width: 42rem; }
     <div class="arrow">&rarr;</div>
     <div class="box"><b>Caddy</b><span>Reverse proxy, automatic HTTPS certificates</span></div>
     <div class="arrow">&rarr;</div>
-    <div class="box"><b>FastAPI</b><span>Python, 85 endpoints, OpenAPI generated automatically</span></div>
+    <div class="box"><b>FastAPI</b><span>Python, 88 endpoints, OpenAPI generated automatically</span></div>
     <div class="arrow">&rarr;</div>
-    <div class="box"><b>PostgreSQL 16</b><span>44 tables, the single source of truth</span></div>
+    <div class="box"><b>PostgreSQL 16</b><span>41 tables, the single source of truth</span></div>
   </div>
 
   <h3>Three layers, one direction</h3>
@@ -1719,7 +1789,7 @@ figcaption { max-width: 42rem; }
     <p><b>Why the build order was 0 &rarr; 1 &rarr; 2.</b> Layer 2 is the interesting
       part, but it is worthless without two years of real movement history to read.
       So the ledger came first, then the documents that fill it, then a synthetic
-      history generator that produced 53,013 movements across 730 days with genuine
+      history generator that produced ~53,000 movements across 730 days with genuine
       weekly rhythm, seasonal illness peaks, supplier delays and stockouts — and only
       then the analysis that reads them.</p>
   </div>
@@ -1885,11 +1955,37 @@ figcaption { max-width: 42rem; }
 
   <h3>In production</h3>
   <p>
-    Everything runs in Docker on a single AWS EC2 instance inside the free tier.
-    Caddy sits in front and obtains TLS certificates by itself. Postgres runs as a
-    container with a mounted volume. GitHub Actions builds the images and deploys on
-    a push to the main branch.
+    Everything runs in Docker on a single AWS EC2 instance inside the free tier — an
+    ARM machine with 2 GB of memory. Caddy sits in front and obtains TLS certificates
+    by itself. Postgres runs as a container with a mounted volume. Four services in
+    total, and a one-shot migration step that must succeed before the API is allowed
+    to start, so the application can never serve against a half-migrated schema.
   </p>
+  <p>
+    <b>Merging to the main branch deploys.</b> Images are built on GitHub's own ARM
+    machines — never on the server, which does not have the memory for a frontend
+    build — published to the container registry tagged with the commit, then pulled
+    and restarted. Every image carries its commit hash, so a rollback is "deploy the
+    previous one" rather than "rebuild and hope". A final check calls the public URL
+    from outside the network, because a check run on the server itself only proves
+    the containers started, not that anybody can reach them.
+  </p>
+
+  <div class="how">
+    <p>One decision worth explaining</p>
+    <p>
+      The deploy step runs on a <b>runner installed on the server itself</b>, which
+      reaches out to GitHub rather than being reached. The obvious alternative was to
+      have GitHub connect in over SSH — but SSH is open only to one address, and
+      GitHub's machines come from thousands that rotate.
+    </p>
+    <p>
+      The choice was to open the SSH port to the whole internet, or to have the
+      server ask for work instead. It asks. <b>Nothing new is exposed, and no server
+      key or cloud credential is stored in GitHub at all.</b>
+    </p>
+  </div>
+
   <p>
     The tight memory budget shaped real decisions: no broker, no separate cache, and
     a forecasting stack that is numpy and statsmodels rather than anything requiring
@@ -1916,7 +2012,7 @@ figcaption { max-width: 42rem; }
   <p class="kicker">Reference</p>
   <h2>Testing</h2>
   <p>
-    87 tests run against a live API and a real database. They deliberately do not
+    273 tests run against a live API and a real database. They deliberately do not
     assert that the forecast is accurate — pinning an error rate in a test only makes
     the suite brittle. They assert the properties that cause real damage when they
     break:
@@ -1936,7 +2032,20 @@ figcaption { max-width: 42rem; }
     <li><b>Settings</b> — bad values are refused, contradictory combinations are
       refused, a batch with one bad field writes none of it, a switched-off feature
       closes its own endpoint and no others, and every change lands in the audit log.</li>
+    <li><b>The two halves still agree.</b> The browser's copy of the API contract is
+      generated from the API itself, and the build regenerates it and fails if the
+      committed copy has fallen behind. Renaming a field on the server is therefore a
+      compile error, not a column that silently renders blank.</li>
   </ul>
+
+  <div class="note">
+    <p><b>Why the tests need a real server and a real database.</b> The properties
+      worth protecting here are database behaviour — the trigger that refuses to let
+      a movement be edited, the row locks that stop two people selling the same last
+      box, the projection that has to match the ledger. None of them survive being
+      faked, so the suite starts an actual API against an actual Postgres and talks
+      to it over HTTP, exactly as the browser does.</p>
+  </div>
 </section>
 
 <!-- ============================================================ stack -->
@@ -1957,25 +2066,26 @@ figcaption { max-width: 42rem; }
         <tr><td>Data access</td><td>SQLAlchemy 2 + Alembic</td><td>Explicit queries and reviewable, versioned migrations</td></tr>
         <tr><td>Validation</td><td>Pydantic v2</td><td>One schema definition serves validation, serialisation and the docs</td></tr>
         <tr><td>Forecasting</td><td>numpy + statsmodels</td><td>Holt-Winters and a backtest harness. No deep-learning stack, on purpose</td></tr>
-        <tr><td>Frontend</td><td>React 19 + Vite + TypeScript</td><td>Fast builds, and types shared with the API contract</td></tr>
-        <tr><td>Styling</td><td>Tailwind CSS v4</td><td>One token system, no stylesheet drift across seventeen screens</td></tr>
+        <tr><td>Frontend</td><td>React 19 + Vite + TypeScript</td><td>Fast builds, and types generated from the API contract rather than retyped</td></tr>
+        <tr><td>Styling</td><td>Tailwind CSS v4</td><td>One token system, no stylesheet drift across fourteen screens</td></tr>
         <tr><td>Server state</td><td>TanStack Query</td><td>Caching and invalidation without a hand-rolled store</td></tr>
         <tr><td>Charts</td><td>Recharts</td><td>Composable, and small enough for the memory budget</td></tr>
         <tr><td>Auth</td><td>PyJWT + bcrypt</td><td>Short access tokens, rotated refresh tokens</td></tr>
         <tr><td>Logging</td><td>structlog</td><td>Structured lines with a request id on every one</td></tr>
+        <tr><td>API contract</td><td>openapi-typescript</td><td>The browser's types are generated from the live schema; the build fails if they drift</td></tr>
         <tr><td>Tests</td><td>pytest + httpx</td><td>End-to-end against a live API rather than mocks</td></tr>
-        <tr><td>Delivery</td><td>Docker + Caddy + GitHub Actions</td><td>One instance, automatic HTTPS, deploy on push</td></tr>
+        <tr><td>Delivery</td><td>Docker + Caddy + GitHub Actions</td><td>One ARM instance, automatic HTTPS, deploy on merge, images tagged by commit</td></tr>
       </tbody>
     </table>
   </div>
 
   <div class="numbers" style="margin-top:34px">
-    <div><b>13,482</b><span>lines of Python</span></div>
-    <div><b>11,868</b><span>lines of TypeScript</span></div>
-    <div><b>44</b><span>tables</span></div>
+    <div><b>15,492</b><span>lines of Python</span></div>
+    <div><b>11,759</b><span>lines of TypeScript</span></div>
+    <div><b>41</b><span>tables</span></div>
     <div><b>6</b><span>migrations</span></div>
     <div><b>28</b><span>permissions</span></div>
-    <div><b>87</b><span>tests</span></div>
+    <div><b>90</b><span>tests</span></div>
   </div>
 </section>
 
@@ -2025,6 +2135,12 @@ figcaption { max-width: 42rem; }
   <p>
     Two features are marked <span class="pill soon">Coming soon</span> and are not
     built. Everything else described here is working, tested and deployed.
+  </p>
+  <p>
+    The figures inside the screenshots &mdash; movement counts, supplier lead times,
+    reorder totals &mdash; are one capture of a seeded dataset at a moment in time.
+    The system keeps trading, so the live numbers move; the counts quoted in the
+    text (screens, endpoints, tables, tests) describe the codebase and are current.
   </p>
 </footer>
 

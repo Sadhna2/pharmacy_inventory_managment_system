@@ -121,6 +121,13 @@ export type Adjustment = S["AdjustmentOut"];
 
 export type Recall = S["RecallOut"];
 export type RecallImpact = S["RecallImpactOut"];
+
+// Invoice intake. `InvoiceIntake` is a *proposed* goods receipt — nothing has
+// been created when one of these arrives, and it is submitted through the
+// ordinary receipt endpoint after a person has been through it.
+export type InvoiceIntake = S["InvoiceIntakeOut"];
+export type IntakeLine = S["DraftLineOut"];
+export type IntakeFlag = S["FlagOut"];
 export type LocationImpact = S["LocationImpactOut"];
 export type CustomerImpact = S["CustomerImpactOut"];
 export type AuditEntry = S["AuditLogOut"];

@@ -356,6 +356,7 @@ export function LineItems({
   fieldErrors = {},
   validate,
   note,
+  rowAction,
   lockProduct,
 }: {
   lines: Line[];
@@ -377,6 +378,13 @@ export function LineItems({
    * make always outranks background information.
    */
   note?: (line: Line, index: number) => ReactNode;
+  /**
+   * An offer under a row, for when its problem has a fix this form can make.
+   *
+   * Shown alongside the error rather than instead of it — the error says what
+   * is wrong and the action is one way out, not a replacement for knowing.
+   */
+  rowAction?: (line: Line, index: number) => ReactNode;
   /**
    * Render the product as text instead of a picker.
    *
@@ -569,6 +577,7 @@ export function LineItems({
                   </p>
                 )
               )}
+              {rowAction?.(line, index)}
             </div>
             );
           })}
