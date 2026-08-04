@@ -47,6 +47,26 @@ MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
 BATCH_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789"
 
 
+# The alphabet GSTIN's checksum is computed over: 0-9 then A-Z, positionally.
+GSTIN_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _gstin_check_digit(first_fourteen: str) -> str:
+    """The fifteenth character of a GSTIN, from the first fourteen.
+
+    Written out here rather than imported from `app.ai.intake.validate`, which
+    has the same function. A benchmark that shares an implementation with the
+    thing it is testing cannot detect a bug in that implementation — both sides
+    would agree, and agree wrongly. Two independent transcriptions of the
+    published mod-36 rule can disagree, which is the point.
+    """
+    total = 0
+    for i, ch in enumerate(first_fourteen):
+        product = GSTIN_ALPHABET.index(ch) * (1 if i % 2 == 0 else 2)
+        total += product // 36 + product % 36
+    return GSTIN_ALPHABET[(36 - total % 36) % 36]
+
+
 def _batch(rng: random.Random) -> str:
     shape = rng.choice(["AA0000", "A00000", "AAA000", "0000AA", "AA00-00"])
     out = []
@@ -161,16 +181,36 @@ def build_truth(index: int, rng: random.Random) -> dict:
     rounded = float(round(gross_total))
     round_off = _money(rounded - gross_total)
 
+    # These two are drawn here rather than inline below because the GSTIN needs
+    # its own first fourteen characters before the fifteenth can be computed.
+    # The order of the draws is the order they were made in when this corpus
+    # was generated, and it has to stay that way: `random` is a stream, so
+    # reordering two calls changes every value after them and silently
+    # regenerates all fifty invoices.
+    invoice_number = (f"{rng.choice(['GST', 'INV', 'SI', 'TI'])}/"
+                      f"{inv_day.year % 100:02d}-{(inv_day.year + 1) % 100:02d}/"
+                      f"{rng.randint(1000, 9999)}")
+
+    # A GSTIN's fifteenth character is a mod-36 checksum over the first
+    # fourteen. It used to be drawn at random, so every invoice in the corpus
+    # carried an invalid number and the validator's checksum flagged all fifty.
+    # That is worse than useless: it buried the one document where the check
+    # earns its keep — inv_023, whose reading blends the supplier's GSTIN with
+    # the buyer's from the "Billed to" block — under forty-nine false alarms.
+    #
+    # The random draw is kept, and thrown away, on purpose. Consuming the same
+    # number of values leaves the rest of the corpus byte-for-byte what it was,
+    # so scores measured against it stay valid and only the check digit moves.
+    gstin_body = (f"{gst_prefix}{rng.randint(1000, 9999)}"
+                  f"{rng.choice('ABCDEFGHJKLMNPQRSTUVWXYZ')}1Z")
+    rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ0123456789")
+
     return {
         "invoice_id": f"inv_{index:03d}",
-        "invoice_number": f"{rng.choice(['GST', 'INV', 'SI', 'TI'])}/"
-                          f"{inv_day.year % 100:02d}-{(inv_day.year + 1) % 100:02d}/"
-                          f"{rng.randint(1000, 9999)}",
+        "invoice_number": invoice_number,
         "invoice_date": inv_day.isoformat(),
         "supplier_name": dist_name,
-        "supplier_gstin": f"{gst_prefix}{rng.randint(1000, 9999)}"
-                          f"{rng.choice('ABCDEFGHJKLMNPQRSTUVWXYZ')}1Z"
-                          f"{rng.choice('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789')}",
+        "supplier_gstin": gstin_body + _gstin_check_digit(gstin_body),
         "supplier_address": f"{area}, {city} - {rng.randint(110000, 700000)}",
         "supplier_state_code": state,
         "drug_licence_no": f"{rng.randint(20, 21)}B/{rng.randint(1000, 9999)}/"
