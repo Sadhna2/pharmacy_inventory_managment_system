@@ -89,11 +89,31 @@ export function ProductForm({
   open,
   onClose,
   product,
+  prefill,
+  onCreated,
 }: {
   open: boolean;
   onClose: () => void;
   /** Present when editing; absent when creating. */
   product?: Product | null;
+  /**
+   * Fields to start a new product from — used when one is being created off a
+   * supplier invoice, where the paper already states the name, pack, HSN, GST
+   * rate and MRP. Ignored when editing.
+   *
+   * Deliberately a partial draft rather than a whole one: the invoice knows
+   * some of a product and nothing about how it is stocked, and pretending
+   * otherwise would put a default schedule and storage condition on a drug
+   * without anyone having looked.
+   */
+  prefill?: Draft;
+  /**
+   * The product that was just created. Lets a caller adopt it immediately —
+   * the receiver who created it did so to fill a row on the form they are
+   * still standing in, and making them find it in a picker afterwards is the
+   * step where the whole detour stops being worth it.
+   */
+  onCreated?: (created: Product) => void;
 }) {
   const editing = Boolean(product);
   const [draft, setDraft] = useState<Draft>(blank);
@@ -113,7 +133,10 @@ export function ProductForm({
     editing ? `/api/v1/products/${product!.id}` : "/api/v1/products",
     {
       invalidate: ["products"],
-      onDone: onClose,
+      onDone: (result) => {
+        if (!editing && onCreated) onCreated(result as Product);
+        onClose();
+      },
       method: editing ? "patch" : "post",
     },
   );
@@ -146,7 +169,7 @@ export function ProductForm({
         sourcing_policy: product.sourcing_policy,
       });
     } else {
-      setDraft(blank);
+      setDraft({ ...blank, ...prefill });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, product]);

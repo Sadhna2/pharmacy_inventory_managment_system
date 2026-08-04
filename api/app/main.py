@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.ai.anomaly import router as anomaly_router
 from app.ai.forecasting import router as forecasting_router
+from app.ai.intake import router as intake_router
 from app.ai.leadtime import router as leadtime_router
 from app.ai.reorder import router as reorder_router
 from app.api.v1 import audit, auth, masters, operations, products, stock, users
@@ -188,3 +189,7 @@ app.include_router(leadtime_router.router, prefix=API_PREFIX)
 app.include_router(anomaly_router.router, prefix=API_PREFIX)
 app.include_router(forecasting_router.router, prefix=API_PREFIX)
 app.include_router(reorder_router.router, prefix=API_PREFIX)
+# Reads a photographed supplier invoice into a draft goods receipt. Creates
+# nothing — the draft is submitted through the existing grn_router above, by a
+# person, which is what keeps the ledger's only writer unchanged.
+app.include_router(intake_router.router, prefix=API_PREFIX)

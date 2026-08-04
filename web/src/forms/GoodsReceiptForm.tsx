@@ -37,15 +37,18 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PackageCheck, ShieldQuestion, Split } from "lucide-react";
+import { PackageCheck, Plus, ShieldQuestion, Split } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type {
   Page,
+  Product,
   PurchaseOrder,
   PurchaseOrderLine,
+  Supplier,
   Warehouse,
 } from "@/lib/types";
+import { ProductForm } from "@/forms/ProductForm";
 import {
   FormError,
   FormGrid,
@@ -55,6 +58,14 @@ import {
   type Line,
 } from "@/components/form";
 import { Button, Field, Input, Modal, Select } from "@/components/ui";
+import {
+  InvoiceScanButton,
+  ScanFindings,
+  rememberAliases,
+  type Alias,
+  type RowState,
+} from "@/forms/InvoiceScan";
+import type { InvoiceIntake } from "@/lib/types";
 
 /** What the order still expects on this line. Never negative. */
 const outstanding = (line: PurchaseOrderLine) =>
@@ -110,10 +121,45 @@ export function GoodsReceiptForm({
   const [quarantine, setQuarantine] = useState(false);
   const [crossDockAll, setCrossDockAll] = useState("");
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
+  const [scan, setScan] = useState<InvoiceIntake | null>(null);
+  // Only asked for on an unordered delivery. With an order, the order says.
+  const [scanSupplier, setScanSupplier] = useState("");
+  const [teach, setTeach] = useState(true);
+  const [taught, setTaught] = useState<string | null>(null);
+  /**
+   * Which header fields the last scan filled in.
+   *
+   * A second upload into the same open form has to tell its own leftovers from
+   * something a person typed. The first is stale the moment another document is
+   * read; the second is a decision nobody made twice and must survive.
+   * Comparing values cannot answer that — an invoice number the scan wrote and
+   * one somebody typed look identical — so what the scan touched is recorded
+   * when it touches it.
+   */
+  const [scanFilled, setScanFilled] = useState<Set<string>>(new Set());
+  /**
+   * The row whose product is being created right now, by `key`.
+   *
+   * A delivery routinely carries something the catalogue has never held, and
+   * until this existed the only way through was to abandon the half-filled
+   * receipt, add the product in Master data, come back and scan again. Nobody
+   * does that. They type the row by hand, the catalogue never learns, and the
+   * next invoice from the same distributor asks the same question.
+   */
+  const [creatingFor, setCreatingFor] = useState<number | null>(null);
 
   const warehouses = useQuery({
     queryKey: ["warehouses"],
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
+    enabled: open,
+  });
+
+  // Only needed for an unordered delivery, where nothing else names the
+  // distributor — but the modal is opened far more often than a scan is run,
+  // so it is fetched with the rest rather than on demand.
+  const suppliers = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: () => api.get<Supplier[]>("/api/v1/suppliers"),
     enabled: open,
   });
 
@@ -148,6 +194,11 @@ export function GoodsReceiptForm({
     setInvoiceDate("");
     setQuarantine(false);
     setCrossDockAll("");
+    setScan(null);
+    setScanSupplier("");
+    setTeach(true);
+    setTaught(null);
+    setScanFilled(new Set());
     setLines(
       purchaseOrder ? linesFor(purchaseOrder) : [emptyLine()],
     );
@@ -181,6 +232,14 @@ export function GoodsReceiptForm({
    */
   const chooseOrder = (id: string) => {
     setPoId(id);
+    // A scan is read against a specific order — it decided which products were
+    // even candidates. Keeping its findings after the order changes would be
+    // showing evidence for a delivery this no longer is.
+    setScan(null);
+    setTaught(null);
+    // The order sets the destination now, so nothing here is the scan's any
+    // more — a later upload must not treat this branch as its own to replace.
+    setScanFilled(new Set());
     const po = awaiting?.find((p) => String(p.id) === id);
     if (!po) {
       setLines([emptyLine()]);
@@ -189,6 +248,223 @@ export function GoodsReceiptForm({
     setWarehouseId(String(po.warehouse_id));
     setLines(linesFor(po));
   };
+
+  /**
+   * Turn a scanned invoice into rows.
+   *
+   * Deliberately destructive, for the same reason choosing an order is: the
+   * rows belong to the document that was read, and quietly merging them with
+   * whatever was already typed is how a delivery ends up half from the paper
+   * and half from a previous attempt.
+   *
+   * A line the catalogue could not resolve still becomes a row — with its
+   * quantities and batch filled in and the product left empty. That is the
+   * useful shape: the typing is done and the one decision a person has to make
+   * is sitting in an empty picker that already blocks submission.
+   *
+   * What the invoice actually said travels with the row, in `values`, so an
+   * unresolved line can say so underneath itself. Without it, six empty
+   * pickers above six batch numbers give no clue which carton each one was,
+   * and the only way to find out is to read the findings list and count rows.
+   */
+  const applyScan = (result: InvoiceIntake) => {
+    const filled = new Set<string>();
+    setScan(result);
+    // The previous document's tally of remembered names describes a delivery
+    // that is no longer on screen.
+    setTaught(null);
+
+    // The server settles the destination when it can — from the order, or from
+    // a receiver pinned to one branch. Adopting it saves asking again for
+    // something already known. A branch somebody picked by hand stands; one the
+    // *last scan* adopted does not, because it belonged to that invoice.
+    if (result.warehouse_id && (!warehouseId || scanFilled.has("warehouse"))) {
+      setWarehouseId(String(result.warehouse_id));
+      filled.add("warehouse");
+    }
+
+    // Invoice number and date belong to the page that was just read. Leaving
+    // the previous one standing when this document does not print one — or
+    // when the model could not read it — books this delivery under the last
+    // delivery's invoice number, and that is the one field on the form nobody
+    // would think to re-check, because it is already filled in and plausible.
+    if (result.supplier_invoice_no) {
+      setInvoiceNo(result.supplier_invoice_no);
+      filled.add("invoiceNo");
+    } else if (scanFilled.has("invoiceNo")) {
+      setInvoiceNo("");
+    }
+    if (result.supplier_invoice_date) {
+      setInvoiceDate(result.supplier_invoice_date);
+      filled.add("invoiceDate");
+    } else if (scanFilled.has("invoiceDate")) {
+      setInvoiceDate("");
+    }
+    setScanFilled(filled);
+
+    // No lines is not "leave what was there". A page the reader could not get
+    // rows out of, on top of the last invoice's fourteen, is the worst of both:
+    // this document's number over the previous document's goods. The findings
+    // panel says what went wrong; the rows go back to empty.
+    if (!result.lines.length) {
+      setLines([emptyLine()]);
+      return;
+    }
+
+    setLines(
+      result.lines.map((row) => ({
+        ...emptyLine(),
+        product: row.product_id
+          ? {
+              id: row.product_id,
+              sku: row.sku ?? "",
+              name: row.product_name ?? `Product ${row.product_id}`,
+              // The receipt only needs batch and expiry when the product is
+              // tracked, and the invoice printed both — so ask for them.
+              // Over-asking costs a filled-in field; under-asking loses the
+              // expiry that FEFO is built on.
+              tracking_mode: row.expiry_date
+                ? "LOT_EXPIRY"
+                : row.batch_no
+                  ? "LOT"
+                  : "NONE",
+            }
+          : null,
+        values: {
+          // Free goods arrived in the same carton and are stock like any
+          // other, so they are received rather than dropped.
+          qty: plain(Number(row.quantity) + Number(row.free_quantity ?? 0)),
+          cost: row.rate ? plain(row.rate) : "",
+          // Zero is what the extractor returns for a figure the invoice never
+          // printed, and plenty of distributor invoices carry no MRP column at
+          // all. Writing that zero through would put an MRP of ₹0 on the lot,
+          // and the MRP on a lot is what the customer may be charged for it.
+          mrp: row.mrp ? plain(row.mrp) : "",
+          lot: row.batch_no ?? "",
+          expiry: row.expiry_date ?? "",
+          poLine: row.po_line_id ? String(row.po_line_id) : "",
+          // Which invoice line this row came from, so a finding raised against
+          // that line can be checked against the row as it stands now rather
+          // than as it was read. Positions cannot do this job — a row removed
+          // in the middle shifts every line number after it.
+          lineNo: String(row.line_no),
+          // Read by `note` below, ignored by the payload, which names the
+          // fields it sends rather than forwarding whatever is here.
+          printed: row.product_id ? "" : (row.printed_name ?? ""),
+          shortlist: row.product_id
+            ? ""
+            : (row.candidates ?? []).map((c) => c.label).join(" · "),
+        },
+      })),
+    );
+  };
+
+  /**
+   * The scanned rows as they stand now, for the findings panel to reconcile
+   * against. Only rows that came from the scan carry a `lineNo`, so a row a
+   * person added by hand is correctly invisible to it — no finding was ever
+   * raised about a line the invoice did not have.
+   */
+  const scannedRows: RowState[] = lines.flatMap((l) =>
+    l.values.lineNo
+      ? [
+          {
+            lineNo: Number(l.values.lineNo),
+            hasProduct: Boolean(l.product),
+            batch: l.values.lot ?? "",
+            expiry: l.values.expiry ?? "",
+          },
+        ]
+      : [],
+  );
+
+  /**
+   * Start a product from what the invoice already says about it.
+   *
+   * The paper carries the name, the pack, the HSN code, the GST rate and the
+   * MRP — five of the fields on the product form, and the four a receiver
+   * would otherwise stop and look up. What it says nothing about is how the
+   * thing is *stocked*: its schedule, its storage, where it is sourced from.
+   * Those are left at the form's defaults for a person to set, because a
+   * default drug schedule nobody looked at is worse than an empty one.
+   *
+   * The tracking mode is the exception, and it is an inference rather than a
+   * default: a line that printed an expiry is a batch with an expiry, and one
+   * that printed only a batch code is a batch. The invoice is evidence for
+   * that, so it is used.
+   */
+  const prefillFor = (line: Line): Record<string, string | boolean> => {
+    const read = scan?.lines.find(
+      (l) => String(l.line_no) === line.values.lineNo,
+    );
+    const fields: Record<string, string | boolean> = {
+      name: line.values.printed ?? "",
+      tracking_mode: line.values.expiry
+        ? "LOT_EXPIRY"
+        : line.values.lot
+          ? "LOT"
+          : "NONE",
+    };
+    if (line.values.mrp) fields.mrp = line.values.mrp;
+    if (read?.pack) fields.pack_size = read.pack;
+    if (read?.hsn) fields.hsn_code = read.hsn;
+    if (read?.gst_rate) fields.gst_rate = String(read.gst_rate);
+    return fields;
+  };
+
+  /** Put a freshly created product into the row that prompted it. */
+  const adoptCreated = (created: Product) => {
+    setLines((current) =>
+      current.map((l) =>
+        l.key === creatingFor
+          ? {
+              ...l,
+              product: {
+                id: created.id,
+                sku: created.sku,
+                name: created.name,
+                tracking_mode: created.tracking_mode,
+              },
+            }
+          : l,
+      ),
+    );
+    setCreatingFor(null);
+  };
+
+  // The order names the distributor; only an unordered delivery has to be
+  // asked. Two sources, one answer, so nothing downstream has to care which.
+  const supplierId = chosen ? String(chosen.supplier_id) : scanSupplier;
+  const supplierName =
+    chosen?.supplier_name ??
+    suppliers.data?.find((s) => String(s.id) === scanSupplier)?.name ??
+    null;
+
+  /**
+   * The lines a person resolved that the catalogue could not.
+   *
+   * `values.printed` is set only on a scanned row that came back unmatched, so
+   * a row with both that and a product now chosen is exactly one answered
+   * question: this distributor prints *that* for *this* product. Nothing else
+   * on the form carries that pairing — an ordinary hand-typed line was never a
+   * question, and a row the matcher resolved was never asked.
+   */
+  const aliases: Alias[] = lines.flatMap((l) =>
+    l.product && l.values.printed
+      ? [
+          {
+            product_id: l.product.id,
+            printed_name: l.values.printed,
+            // Only read when this distributor has no record of supplying the
+            // product yet, where it becomes the cost on the new link. Sending
+            // the rate off the line means that figure is one they charged.
+            ...(Number(l.values.cost) > 0
+              ? { unit_cost: Number(l.values.cost) }
+              : {}),
+          },
+        ]
+      : [],
+  );
 
   const usable = lines.filter((l) => l.product && Number(l.values.qty) > 0);
 
@@ -200,6 +476,16 @@ export function GoodsReceiptForm({
    * SKU, nowhere near the empty cell that caused it.
    */
   const lineProblem = (line: Line): string | null => {
+    // A scanned line whose product could not be resolved. Without this the row
+    // is simply not `usable`, so pressing Receive would book the lines that
+    // matched and drop the rest — eight cartons on the paper, two in the
+    // ledger, and nothing on screen having said so.
+    if (!line.product && line.values.printed) {
+      const closest = line.values.shortlist
+        ? ` Closest: ${line.values.shortlist}.`
+        : "";
+      return `Invoice reads “${line.values.printed}” — choose the product it is, or remove the row.${closest}`;
+    }
     if (!line.product) return null;
     const amount = Number(line.values.qty);
     if (!line.values.qty || Number.isNaN(amount)) return null;
@@ -236,7 +522,27 @@ export function GoodsReceiptForm({
     );
   };
 
-  const save = () =>
+  /**
+   * Teach the aliases, then book the delivery.
+   *
+   * In that order, and not the other way round, because the two facts are
+   * independent: what a distributor calls a product stays true whether or not
+   * this particular receipt goes through. Teaching afterwards would mean
+   * closing the modal on success and having nowhere left to say that some of
+   * it did not store.
+   *
+   * A failure here never blocks the receipt. The goods are on the floor.
+   */
+  const save = async () => {
+    if (teach && supplierId && aliases.length) {
+      const stored = await rememberAliases(supplierId, aliases);
+      setTaught(
+        stored === aliases.length
+          ? null
+          : `Remembered ${stored} of ${aliases.length}. The rest already have ` +
+            `a different code recorded for this distributor — check Master data.`,
+      );
+    }
     submit.mutate({
       warehouse_id: Number(warehouseId),
       purchase_order_id: poId ? Number(poId) : null,
@@ -258,6 +564,7 @@ export function GoodsReceiptForm({
           : null,
       })),
     });
+  };
 
   // The receiving location just became an invalid destination for its own
   // lines, so anything chosen against the previous one is stale.
@@ -289,6 +596,92 @@ export function GoodsReceiptForm({
     >
       <div className="space-y-4">
         <FormError message={submit.message} />
+
+        {/*
+          Offered before the fields rather than beside them: on a delivery with
+          an invoice in the box, scanning it is the first thing to do, and
+          everything below is either filled in by it or checked against it.
+        */}
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2 dark:border-slate-700">
+          {/*
+            Nothing here waits on a field below it. Scanning is the first thing
+            you do with a carton, and where the stock ends up is something you
+            answer after reading the paper — not before.
+          */}
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            Have the distributor&rsquo;s invoice? Photograph it and the batches,
+            expiries and quantities fill in below.
+            {!poId && " Picking the order first makes the matching surer."}
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
+            {/*
+              Naming the distributor without an order does two things: it
+              narrows matching to what they actually supply, and it gives the
+              answers below somewhere to be remembered. An order already says
+              both, so this is only asked when there isn't one.
+            */}
+            {!poId && (
+              <Select
+                value={scanSupplier}
+                onChange={(e) => setScanSupplier(e.target.value)}
+                className="h-8 w-44 text-xs"
+                aria-label="Which distributor sent this"
+              >
+                <option value="">Which distributor?</option>
+                {suppliers.data?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <InvoiceScanButton
+              warehouseId={warehouseId}
+              poId={poId}
+              supplierId={supplierId}
+              onScanned={applyScan}
+            />
+          </div>
+        </div>
+
+        {scan && (
+          <ScanFindings
+            result={scan}
+            rows={scannedRows}
+            onDismiss={() => setScan(null)}
+          />
+        )}
+
+        {/*
+          Shown only once there is something to remember — a scanned line the
+          catalogue could not resolve, that a person has now answered. Offered
+          rather than done quietly, because it writes to master data that
+          every later delivery from this distributor reads.
+        */}
+        {scan && aliases.length > 0 && supplierId && (
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-muted/40 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={teach}
+              onChange={(e) => setTeach(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-[13px] text-ink-soft">
+              Remember {aliases.length}{" "}
+              {aliases.length === 1 ? "name" : "names"}
+              {supplierName ? ` for ${supplierName}` : ""} — the next invoice
+              from them matches{" "}
+              {aliases.length === 1 ? "it" : "them"} without asking.
+              <span className="mt-0.5 block text-xs text-ink-faint">
+                {aliases.map((a) => a.printed_name).join(" · ")}
+              </span>
+            </span>
+          </label>
+        )}
+
+        {taught && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">{taught}</p>
+        )}
 
         <FormGrid>
           <Field
@@ -358,6 +751,18 @@ export function GoodsReceiptForm({
           onChange={setLines}
           fieldErrors={submit.fieldErrors}
           validate={lineProblem}
+          rowAction={(line) =>
+            !line.product && line.values.printed ? (
+              <Button
+                size="sm"
+                className="mt-1.5"
+                onClick={() => setCreatingFor(line.key)}
+              >
+                <Plus className="size-3.5" />
+                Add “{line.values.printed}” to the catalogue
+              </Button>
+            ) : null
+          }
           lockProduct={(line) => Boolean(line.values.poLine)}
           note={(line) => {
             const source = orderLine(line);
@@ -526,6 +931,23 @@ export function GoodsReceiptForm({
           </span>
         </label>
       </div>
+
+      {/*
+        Stacked over the receipt rather than replacing it. The half-filled
+        delivery is still there underneath, which is the whole point — the
+        person is mid-receipt and adding this product is a detour, not a
+        different task. Closing either way lands them back on the row.
+      */}
+      <ProductForm
+        open={creatingFor !== null}
+        onClose={() => setCreatingFor(null)}
+        prefill={
+          creatingFor !== null
+            ? prefillFor(lines.find((l) => l.key === creatingFor) ?? emptyLine())
+            : undefined
+        }
+        onCreated={adoptCreated}
+      />
     </Modal>
   );
 }
