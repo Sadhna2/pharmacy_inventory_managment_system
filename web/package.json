@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "gen:api": "npx --yes openapi-typescript@7.13.0 http://127.0.0.1:8000/openapi.json -o src/lib/schema.d.ts",
+    "gen:api": "npx --yes openapi-typescript@7.13.0 ${API_ORIGIN:-http://127.0.0.1:8000}/openapi.json -o src/lib/schema.d.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },
