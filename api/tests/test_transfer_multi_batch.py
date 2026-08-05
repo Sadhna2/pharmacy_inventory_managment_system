@@ -22,8 +22,14 @@ WHAT THIS FILE WRITES
 ---------------------
 Real stock moves, so the test moves it back: every transfer raised here is
 either cancelled, or dispatched and received and then reversed by a return
-transfer. Nothing is left in transit — an abandoned IN_TRANSIT transfer is
-stock this system believes is on a lorry forever.
+transfer. Nothing *this file* raises is left in transit — an abandoned
+IN_TRANSIT transfer is stock the system believes is on a lorry forever.
+
+Which is why the assertions measure their own effect rather than the state of
+the whole database. Other transfers are legitimately on the road at any moment
+— the seed ships several — so "the destination holds nothing in transit" is
+not a fact about this code, and asserting it fails for stock nobody here
+touched.
 """
 
 import os
@@ -84,12 +90,22 @@ def _balances(client, admin, *, product_id: int, warehouse_id: int) -> list[dict
     return [r for r in rows if r.get("status") == "AVAILABLE"]
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def two_batches(client, admin, route) -> dict:
     """A product held in at least two batches at the source.
 
     Chosen from live balances rather than created, so the quantities are the
     ones FEFO will really see.
+
+    Per test, not per session, and that is the whole point of the fixture. Each
+    test here moves `spanning` units off the source and brings them back, which
+    returns the total but not the split — the stock comes home in a different
+    arrangement of lots, so the smallest batch is not the size it was. Measured
+    once and reused, the quantity went stale inside a single run and later
+    tests asked for two units more than the source still held in that lot,
+    failing with "Only 239 available" against a number read when there were
+    241. Re-reading costs one query per test and makes the fixture mean what
+    its first sentence says.
     """
     source, _ = route
     products = client.get("/api/v1/products?size=200", headers=admin).json()["items"]
@@ -227,6 +243,30 @@ def test_nothing_is_left_on_the_road(
     source, dest = route
     product_id = two_batches["product"]["id"]
 
+    def in_transit_at_destination() -> Decimal:
+        rows = client.get(
+            f"/api/v1/stock/balances?product_id={product_id}"
+            f"&warehouse_id={dest}&size=200",
+            headers=admin,
+        ).json()
+        rows = rows["items"] if isinstance(rows, dict) else rows
+        return sum(
+            (
+                Decimal(str(r["qty_on_hand"]))
+                for r in rows
+                if r.get("status") == "IN_TRANSIT"
+            ),
+            Decimal("0"),
+        )
+
+    # The delta, not the absolute. This suite runs against the shared demo
+    # database, where other transfers are legitimately on the road — the seed
+    # ships several, and a run interrupted between dispatch and receipt leaves
+    # its own. Asserting the destination holds *nothing* in transit therefore
+    # failed for stock this test never touched, which says nothing about the
+    # split it exists to check.
+    before = in_transit_at_destination()
+
     transfer = _raise(
         client, manager, raised, source, dest, product_id, two_batches["spanning"]
     )
@@ -234,19 +274,12 @@ def test_nothing_is_left_on_the_road(
     client.post(f"/api/v1/transfers/{transfer['id']}/dispatch", headers=admin)
     client.post(f"/api/v1/transfers/{transfer['id']}/receive", headers=admin)
 
-    rows = client.get(
-        f"/api/v1/stock/balances?product_id={product_id}"
-        f"&warehouse_id={dest}&size=200",
-        headers=admin,
-    ).json()
-    rows = rows["items"] if isinstance(rows, dict) else rows
-    stranded = sum(
-        Decimal(str(r["qty_on_hand"]))
-        for r in rows
-        if r.get("status") == "IN_TRANSIT"
-    )
+    stranded = in_transit_at_destination() - before
 
-    assert stranded == 0, f"{stranded} units still in transit after receipt"
+    assert stranded == 0, (
+        f"{stranded} of this transfer's units are still in transit after "
+        f"receipt (destination held {before} before it was raised)"
+    )
 
 
 def test_the_received_quantity_matches_what_was_asked_for(
