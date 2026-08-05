@@ -376,17 +376,52 @@ def scoped_tables() -> frozenset[str]:
     `from_warehouse_id` and `to_warehouse_id` on transfers and
     `cross_dock_warehouse_id` on receipt lines as well as the plain column.
 
-    Line tables that carry no warehouse of their own — `sales_order_lines` and
-    the rest — are not in here, and that is not an oversight: any query that
-    attributes a line to a branch has to join its parent, and the parent is in
-    here. On their own they say what was moved, never where, and where is the
-    thing being scoped.
+    A table also counts when it belongs to a branch through its parent, and
+    that half is what the first version of this function missed. `shipments`
+    carries no warehouse column at all — it hangs off `sales_orders`, which
+    does — so `SELECT * FROM shipments` handed a branch account every other
+    branch's outbound deliveries without touching a single scoped table.
+    `shipment_lines` then gives the batch that went to each of them.
+
+    The earlier reasoning, that a line table has to join its parent to be
+    attributed to a branch and the parent is caught, is true for what a line
+    *means* and false for what it *leaks*: `sales_order_lines` alone still
+    lists what every branch sold, and the order id is a perfectly good handle
+    for grouping it. Reachability is therefore followed to a fixed point.
+
+    A foreign key into `users` is pointedly not followed. `users` is in here
+    because it carries `warehouse_id`, but an FK pointing at it says who acted,
+    not where the row belongs — following it would drag `audit_logs`,
+    `app_settings` and `feature_flags` in behind it and leave a scoped account
+    able to ask almost nothing.
     """
-    return frozenset(
+    tables = Base.metadata.tables
+    scoped = {
         name
-        for name, table in Base.metadata.tables.items()
+        for name, table in tables.items()
         if any(column.name.endswith("warehouse_id") for column in table.columns)
-    )
+    }
+
+    #: The seeds worth propagating from — see the note about `users` above.
+    frontier = scoped - {User.__tablename__}
+    while frontier:
+        gained = {
+            name
+            for name, table in tables.items()
+            if name not in scoped
+            and any(
+                key.column.table.name in frontier
+                and key.column.table.name != User.__tablename__
+                for column in table.columns
+                for key in column.foreign_keys
+            )
+        }
+        if not gained:
+            break
+        scoped |= gained
+        frontier = gained
+
+    return frozenset(scoped)
 
 
 def scope_guard(sql: str, allowed_warehouse_ids: list[int] | None) -> None:
@@ -519,12 +554,27 @@ def _check_users_table(text: str) -> None:
                 f"only {_PERMITTED_PHRASE} of a person"
             )
 
-    # An unqualified column can be attributed only when there is one table to
-    # attribute it to — and then it can be attributed exactly: `SELECT is_active
-    # FROM users` is about a user whether it says so or not.
+    # An unqualified column can be attributed whenever no other table named in
+    # the query could own it. `SELECT is_active FROM users` is about a user
+    # whether it says so or not; so is `SELECT role_id FROM users JOIN products
+    # ...`, because `products` has no `role_id` for it to have come from.
+    #
+    # The first version of this check only ran when `users` was the *only*
+    # table named, which meant adding any second table to the FROM clause
+    # turned the check off wholesale rather than narrowing it — and a join is
+    # the ordinary shape of a real query, not an unusual one. Ambiguity is
+    # still left alone: `created_at` beside `goods_receipts` genuinely could be
+    # either, and the guard does not parse well enough to say which.
     tables_named = set(_words(text)) & set(Base.metadata.tables)
-    if tables_named == {User.__tablename__}:
-        withheld = {c.name for c in User.__table__.columns} - PERMITTED_USER_COLUMNS
+    if User.__tablename__ in tables_named:
+        elsewhere = {
+            column.name
+            for name in tables_named - {User.__tablename__}
+            for column in Base.metadata.tables[name].columns
+        }
+        withheld = {
+            c.name for c in User.__table__.columns
+        } - PERMITTED_USER_COLUMNS - elsewhere
         for word in _words(text):
             if word in withheld:
                 raise UnsafeQuery(
@@ -576,19 +626,55 @@ def credential_guard(sql: str) -> None:
 # ------------------------------------------------------------------ public API
 
 
+def customer_guard(customer_id: int | None) -> None:
+    """Refuse a buyer's account outright, before any SQL is even read.
+
+    A customer is scoped by *who they are*, not by where they work, so
+    `scoped_warehouse_ids` returns None for them exactly as it does for an
+    administrator — the two are indistinguishable by the time they reach
+    `scope_guard`, and None means "the whole chain". A customer who reached
+    this module would therefore be handed the unscoped database: every other
+    hospital's orders, and the credit limit, GSTIN and address of every buyer
+    in `customers`.
+
+    Nothing routes them here today. `/ai/ask` gates on `ai.view`, which no
+    customer holds. But the permission that *sounds* like the gate is `ai.ask`,
+    customers do hold that, and the next person to read the router will see a
+    question endpoint gated on a viewing permission and correct it. This is the
+    guard that makes that a refusal instead of a breach.
+
+    Answering a buyer's own orders properly would mean scoping arbitrary SQL to
+    a customer id, which is the rewrite this module refuses to do for branches
+    and refuses here for the same reason. Their orders are on their own screen,
+    already scoped.
+    """
+    if customer_id is not None:
+        raise UnsafeQuery(
+            "Ask answers questions about the pharmacy's own stock and trade, "
+            "and a customer account cannot be given that. Your orders, their "
+            "lines and their invoices are on your Orders screen, which shows "
+            "you everything of yours and nothing of anybody else's"
+        )
+
+
 def check_sql(
     sql: str,
     *,
     allowed_warehouse_ids: list[int] | None,
+    customer_id: int | None = None,
     cap: int = DEFAULT_ROW_CAP,
 ) -> str:
     """Every guard, in order, returning the query as it is allowed to run.
 
     Raises `UnsafeQuery` with the reason otherwise. The order is chosen for the
-    message rather than for safety — all four have to pass — but a stacked
+    message rather than for safety — all of them have to pass — but a stacked
     statement makes every later finding noise, and someone reaching for a
     password hash should be told about that rather than about their branch.
+
+    The customer check runs first and ignores the SQL entirely: it is a fact
+    about the account, so there is no query it could be worth reading.
     """
+    customer_guard(customer_id)
     _check_statement_shape(sql)
     credential_guard(sql)
     scope_guard(sql, allowed_warehouse_ids)

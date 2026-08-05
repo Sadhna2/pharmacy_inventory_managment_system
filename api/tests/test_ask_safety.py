@@ -21,6 +21,7 @@ from app.ai.ask.safety import (
     DEFAULT_ROW_CAP,
     UnsafeQuery,
     check_sql,
+    customer_guard,
     enforce_row_limit,
     is_single_select,
     scoped_tables,
@@ -289,14 +290,58 @@ def test_check_sql_returns_the_query_that_will_actually_run():
 def test_the_scoped_tables_are_read_off_the_models_and_not_written_down():
     """A hand-kept list is wrong the first time somebody adds a table, and it is
     wrong silently: the new table is simply absent from it, so everyone can
-    read it. This asserts the derivation rather than the answer."""
-    for name in scoped_tables():
-        columns = {column.name for column in Base.metadata.tables[name].columns}
-        assert any(c.endswith("warehouse_id") for c in columns), name
-    assert "stock_balances" in scoped_tables()
+    read it. This asserts the derivation rather than the answer.
+
+    A table qualifies two ways — its own `*warehouse_id` column, or a foreign
+    key into something that already qualifies. Both are checked here, because
+    the second was missing and that is what let `shipments` through.
+    """
+    scoped = scoped_tables()
+    for name in scoped:
+        table = Base.metadata.tables[name]
+        own = any(c.name.endswith("warehouse_id") for c in table.columns)
+        inherited = any(
+            key.column.table.name in scoped
+            for column in table.columns
+            for key in column.foreign_keys
+        )
+        assert own or inherited, name
+
+    assert "stock_balances" in scoped
     # from_warehouse_id and to_warehouse_id count as much as the plain column.
-    assert "stock_transfers" in scoped_tables()
-    assert "products" not in scoped_tables()
+    assert "stock_transfers" in scoped
+    assert "products" not in scoped
+
+
+def test_a_table_that_belongs_to_a_branch_only_through_its_parent_is_scoped():
+    """The gap this closed, named directly.
+
+    `shipments` has no warehouse column — it hangs off `sales_orders`, which
+    does. Under the old rule `SELECT * FROM shipments` was a query that touched
+    no scoped table, so a branch account was handed every other branch's
+    outbound deliveries; `shipment_lines` then said which batch went in each.
+    """
+    scoped = scoped_tables()
+
+    assert "shipments" in scoped
+    assert "shipment_lines" in scoped
+    # The same reasoning reaches every line table, for the same reason: on its
+    # own a line still lists what every branch bought or sold.
+    assert "sales_order_lines" in scoped
+    assert "purchase_order_lines" in scoped
+
+
+def test_reachability_stops_at_users_rather_than_swallowing_the_schema():
+    """`users` carries a warehouse, so following keys *into* it would scope
+    almost everything — an FK to `users` says who acted, not where the row
+    belongs. If this ever fails, a scoped account can ask nothing at all."""
+    scoped = scoped_tables()
+
+    assert "audit_logs" not in scoped
+    assert "app_settings" not in scoped
+    assert "feature_flags" not in scoped
+    assert "customers" not in scoped
+    assert "suppliers" not in scoped
 
 
 def test_a_manager_may_read_across_the_whole_chain():
@@ -505,3 +550,35 @@ def test_a_scoped_account_reaching_for_the_hash_is_told_about_the_hash():
     is the more serious thing to have been asked, and because "your account is
     limited to one branch" would imply a manager could have it."""
     assert "credential" in refuses("SELECT password_hash FROM users", scope=BRANCH)
+
+
+# ------------------------------------------------------------------- customers
+
+
+def test_a_buyers_account_is_refused_before_any_sql_is_read():
+    """A customer is scoped by who they are, not where they work, so
+    `scoped_warehouse_ids` returns None for them exactly as it does for an
+    administrator. By the time the branch guard sees that None the two are
+    indistinguishable, and None means the whole chain — every other hospital's
+    orders, and every buyer's credit limit, GSTIN and address."""
+    with pytest.raises(UnsafeQuery) as refusal:
+        customer_guard(7)
+
+    assert "customer account" in str(refusal.value)
+
+
+def test_the_customer_check_is_inert_for_everybody_else():
+    """None is what `scoped_customer_id` returns for every internal role, so
+    adding this guard must cost the roles that can actually reach Ask nothing."""
+    customer_guard(None)
+
+
+def test_a_buyer_is_refused_even_when_the_query_is_entirely_innocent():
+    """The refusal is a fact about the account, so there is no query worth
+    reading — including one that would sail past every other guard."""
+    with pytest.raises(UnsafeQuery):
+        check_sql(
+            "SELECT id FROM products",
+            allowed_warehouse_ids=None,
+            customer_id=3,
+        )

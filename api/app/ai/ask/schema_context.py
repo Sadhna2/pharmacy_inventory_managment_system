@@ -307,14 +307,29 @@ turns a query that runs into a number that lies.
     suppliers do we have" should filter is_active unless the question is
     explicitly historical.
 
+13. FOUR TABLES EXIST AND ARE ALWAYS EMPTY: forecasts, forecast_runs,
+    forecast_accuracy and reorder_suggestions. Nothing in this application
+    writes a row to any of them. The forecasting, accuracy and replenishment
+    figures are computed from the movement ledger on demand and returned by
+    /api/v1/ai/... endpoints; they are never stored (see the Layer 2 note in
+    app/main.py, and that no code anywhere constructs these models).
+
+    So do NOT answer a question about a forecast, forecast accuracy, or what
+    to reorder by selecting from these tables. The query would be valid, would
+    run, and would return nothing — and "no rows" reads as "there is nothing to
+    reorder", which is the opposite of the truth and the most dangerous wrong
+    answer this system can give. Refuse instead, and say the figures live on
+    the Demand forecast and Replenishment screens, which compute them.
+
+    Their columns and foreign keys are still described above because they are
+    really in the schema. Present in the schema is not the same as populated,
+    and only this note carries that difference.
+
 SMALLER TRAPS
   * Supplier lead time is purchase_orders.order_date to MIN(goods_receipts.
     received_at) per order, not to the last receipt — a split delivery has
     several GRNs and only the first one is the supplier's speed (ai/leadtime/
     service.py).
-  * reorder_suggestions are proposals and move no stock. They matter only when
-    status='ACCEPTED', which is also when purchase_order_id is set
-    (models/forecasting.py).
   * users.warehouse_id NULL means chain-wide access, not "no branch"
     (models/identity.py).
   * goods_receipt_lines.cross_dock_warehouse_id means the line was sent
@@ -364,7 +379,9 @@ JOIN PATHS worth knowing
 
   A forecast or a recommendation back to the run that produced it:
     forecasts.run_id / forecast_accuracy.run_id / reorder_suggestions.run_id ->
-    forecast_runs.id (seed and cutoff_date make a run reproducible)"""
+    forecast_runs.id (seed and cutoff_date make a run reproducible). Listed for
+    completeness only — all four tables are empty, always. See trap 13; a join
+    along this path returns nothing and must not be used to answer anything."""
 
 
 # --- assembly ---------------------------------------------------------------

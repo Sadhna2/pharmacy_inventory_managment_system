@@ -44,9 +44,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.ai.ask import service
+from app.ai.ask.safety import UnsafeQuery
 from app.ai.ask.schemas import AskIn, AskOut
-from app.core.deps import require_feature, require_permission, scoped_warehouse_ids
-from app.core.errors import ExternalServiceError, ValidationError
+from app.core.deps import (
+    require_feature,
+    require_permission,
+    scoped_customer_id,
+    scoped_warehouse_ids,
+)
+from app.core.errors import ExternalServiceError, PermissionDenied, ValidationError
 from app.models.identity import User
 
 router = APIRouter(prefix="/ai/ask", tags=["AI · ask"])
@@ -88,8 +94,18 @@ def ask_question(
         answer = service.answer(
             payload.question,
             allowed_warehouse_ids=scoped_warehouse_ids(user),
+            # A buyer is scoped by who they are, and `scoped_warehouse_ids`
+            # returns None for them exactly as it does for an administrator.
+            # Passing this is what keeps those two apart down in the guard.
+            customer_id=scoped_customer_id(user),
             previous=previous,
         )
+    except UnsafeQuery as exc:
+        # Only `customer_guard` reaches here: every other refusal is about a
+        # statement and comes back as a 200 with the reason, because declining
+        # a query is an outcome. This one is about the account, so it is the
+        # ordinary permission answer the rest of the API gives.
+        raise PermissionDenied(str(exc)) from exc
     except service.AskRejected as exc:
         # An empty question or an essay. The asker can fix it themselves, and
         # the message says how, so it is theirs rather than the server's.

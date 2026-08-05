@@ -357,15 +357,21 @@ GOLDEN_QUESTIONS: tuple[GoldenQuestion, ...] = (
     ),
     GoldenQuestion(
         question="Which reorder suggestions are still waiting on a decision?",
-        must_reference_tables=("reorder_suggestions", "products", "warehouses"),
-        must_not_reference_tables=(),
-        expected_shape=Shape.RANKING,
+        must_reference_tables=(),
+        must_not_reference_tables=("reorder_suggestions",),
+        expected_shape=None,
+        outcome=Outcome.REFUSE,
         notes=(
-            "A suggestion is inert until somebody accepts it, and it is "
-            "superseded rather than deleted when a newer run lands — so both "
-            "PENDING and the newest run_id are needed. Filtering on status "
-            "alone returns every stale recommendation the system has ever "
-            "made, ranked convincingly."
+            "This entry used to require the query to reference "
+            "reorder_suggestions, and a query that did would have scored full "
+            "marks while being incapable of returning a single row: nothing in "
+            "this application ever writes to that table. Replenishment is "
+            "computed from the ledger on demand and served from an endpoint.\n\n"
+            "So the only correct behaviour is to refuse and point at the "
+            "Replenishment screen. An empty result here does not read as "
+            "'no data' — it reads as 'nothing needs reordering', which is the "
+            "most expensive wrong answer this system can give, and it arrives "
+            "with a SELECT underneath it that looks like evidence."
         ),
     ),
     # --- time windows --------------------------------------------------------
@@ -566,15 +572,19 @@ GOLDEN_QUESTIONS: tuple[GoldenQuestion, ...] = (
     ),
     GoldenQuestion(
         question="How good was the last forecast for Paracetamol 650mg?",
-        must_reference_tables=("forecast_accuracy", "forecast_runs", "products"),
-        must_not_reference_tables=("forecasts",),
-        expected_shape=Shape.SCALAR,
+        must_reference_tables=(),
+        must_not_reference_tables=("forecast_accuracy", "forecast_runs", "forecasts"),
+        expected_shape=None,
+        outcome=Outcome.REFUSE,
         notes=(
-            "Accuracy is a measured backtest stored per run, not something to "
-            "be recomputed from the forecasts table on the fly. 'The last' "
-            "means the newest SUCCEEDED run — a FAILED run still has a row, "
-            "and taking the maximum id without filtering status reports the "
-            "accuracy of a run that never finished."
+            "Same defect as the reorder entry, and it read even more "
+            "convincingly: the note here used to explain how to pick the "
+            "newest SUCCEEDED run, which is exactly the kind of detail that "
+            "makes a rule look verified. All three forecast tables are empty "
+            "and always have been — accuracy is backtested on demand, not "
+            "stored — so every one of those refinements was advice about rows "
+            "that do not exist.\n\n"
+            "Refuse, and say the figure is on the Demand forecast screen."
         ),
     ),
     # --- where the semantic layer is the whole answer ------------------------

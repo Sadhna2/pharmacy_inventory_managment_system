@@ -74,7 +74,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ai.ask.safety import DEFAULT_ROW_CAP, UnsafeQuery, check_sql
+from app.ai.ask.safety import (
+    DEFAULT_ROW_CAP,
+    UnsafeQuery,
+    check_sql,
+    customer_guard,
+)
 from app.ai.ask.schema_context import build_schema_context
 from app.ai.intake import service as intake
 from app.core.config import settings
@@ -838,6 +843,7 @@ def answer(
     question: str,
     *,
     allowed_warehouse_ids: list[int] | None,
+    customer_id: int | None = None,
     previous: PreviousTurn | None = None,
 ) -> Answer:
     """Answer one question. Reads; never writes; may refuse, may ask back.
@@ -850,6 +856,10 @@ def answer(
     read-only transaction, so there is no writable session anywhere on this
     code path for a future edit to reach for by accident.
     """
+    # Before the question is even read, and well before a model is paid: this
+    # is a fact about the account, not about anything they typed.
+    customer_guard(customer_id)
+
     asked = question.strip()
     if not asked:
         raise AskRejected("there is no question here to answer")
