@@ -33,7 +33,8 @@ kept because they explain *why* a given line is written the way it is.
 | [Architecture](docs/ARCHITECTURE.md) | System, layer, ledger and deployment diagrams; the request path; the stack |
 | [ER diagram](docs/ER-DIAGRAM.md) | 40 tables in five readable groups, read from a live database |
 | [Project report](docs/PROJECT-REPORT.md) | Problem, solution, implementation, testing, **limitations**, future scope |
-| [Slides](docs/SLIDES.md) | Review/demo deck with speaker notes |
+| [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | 18-slide review/demo deck, speaker notes in the notes pane |
+| [Slides — source](docs/SLIDES.md) | The same deck as Markdown, for diffing and editing |
 | [Demo video script](docs/DEMO-VIDEO-SCRIPT.md) | Shot-by-shot script, ~5 minutes, with recovery notes |
 | [Product guide](docs/product-guide/guide.html) | Screen-by-screen user manual with screenshots |
 
