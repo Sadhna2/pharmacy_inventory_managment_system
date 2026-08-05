@@ -29,6 +29,31 @@ export interface Column<T> {
   /** Hide below this breakpoint on the desktop table. */
   hideBelow?: "sm" | "md" | "lg" | "xl";
   width?: string;
+  /**
+   * Hug the content instead of taking a share of the spare width.
+   *
+   * A `w-full` table with no widths hands every column an equal slice of
+   * whatever is left over, so a status badge and a row menu each got as much
+   * room as a document reference and the table grew a corridor of dead space
+   * in the middle — most visibly between the last text column and Status.
+   *
+   * `1%` rather than `0`: it is the smallest width a browser will honour while
+   * still expanding the cell to fit its content, which is exactly the rule
+   * wanted here. Numeric columns get this automatically — a figure never needs
+   * slack — and anything else that should hug asks for it.
+   */
+  shrink?: boolean;
+}
+
+/** Does this column hug its content rather than share the spare width? */
+function hugs<T>(col: Column<T>): boolean {
+  return col.shrink ?? Boolean(col.numeric);
+}
+
+/** An explicit width wins; otherwise a hugging column asks for the minimum. */
+function colWidth<T>(col: Column<T>): { width: string } | undefined {
+  if (col.width) return { width: col.width };
+  return hugs(col) ? { width: "1%" } : undefined;
 }
 
 interface DataTableProps<T> {
@@ -123,10 +148,11 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  style={col.width ? { width: col.width } : undefined}
+                  style={colWidth(col)}
                   className={cn(
                     "px-4 py-2.5 text-[11px] font-semibold tracking-wide text-ink-faint uppercase",
                     col.numeric ? "text-right" : "text-left",
+                    hugs(col) && "whitespace-nowrap",
                     col.hideBelow && HIDE_CLASSES[col.hideBelow],
                   )}
                 >
@@ -151,6 +177,7 @@ export function DataTable<T>({
                     className={cn(
                       "px-4 py-3 align-middle",
                       col.numeric && "text-right tnum",
+                      hugs(col) && "whitespace-nowrap",
                       col.hideBelow && HIDE_CLASSES[col.hideBelow],
                     )}
                   >

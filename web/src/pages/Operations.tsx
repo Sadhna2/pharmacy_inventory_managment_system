@@ -105,6 +105,9 @@ function raisedByColumn<T extends {
     header: "Raised by",
     hideBelow: "md",
     card: "secondary",
+    // Two short names. Left to share the spare width it opened a gap between
+    // itself and Status wide enough that the two stopped reading as one row.
+    shrink: true,
     render: (row) => (
       <RaisedBy
         createdBy={row.created_by_name}
@@ -259,6 +262,10 @@ export function PurchaseOrders() {
       key: "status",
       header: "Status",
       card: "secondary",
+      // A badge is as wide as its word. Sharing the spare width put a corridor
+      // of dead space between it and the column before it on every one of
+      // these four tables.
+      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
@@ -519,7 +526,14 @@ export function SalesOrders() {
   const [allocations, setAllocations] = useState<Allocation[] | null>(null);
   const [cancelling, setCancelling] = useState<SalesOrder | null>(null);
   const [acting, setActing] = useState<SalesOrder | null>(null);
-  const [printError, setPrintError] = useState<string | null>(null);
+  // Carries the order it belongs to, not just the words. As a bare string it
+  // outlived the modal that raised it: refusing to print a cancelled order and
+  // then opening a completed one showed the completed order the cancelled
+  // one's refusal, naming a document the reader was no longer looking at.
+  const [printError, setPrintError] = useState<{
+    orderId: number;
+    message: string;
+  } | null>(null);
   const action = useAction(["sales-orders", "balances", "stock"]);
 
   const { data, isPending, error, refetch } = useQuery({
@@ -576,6 +590,10 @@ export function SalesOrders() {
       key: "status",
       header: "Status",
       card: "secondary",
+      // A badge is as wide as its word. Sharing the spare width put a corridor
+      // of dead space between it and the column before it on every one of
+      // these four tables.
+      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
@@ -702,11 +720,13 @@ export function SalesOrders() {
                       })
                       .catch((err) => {
                         printed?.close();
-                        setPrintError(
-                          err instanceof ApiError
-                            ? err.problem.detail
-                            : "The invoice could not be produced.",
-                        );
+                        setPrintError({
+                          orderId: acting.id,
+                          message:
+                            err instanceof ApiError
+                              ? err.problem.detail
+                              : "The invoice could not be produced.",
+                        });
                       });
                   }}
                 >
@@ -716,9 +736,9 @@ export function SalesOrders() {
               {/* A blocked popup is silent, and so is a failed fetch — without
                   this the button would look like it did nothing at all, which
                   is the failure it was just fixed for. */}
-              {printError && (
+              {printError?.orderId === acting.id && (
                 <p className="text-center text-[12px] text-danger">
-                  {printError}
+                  {printError.message}
                 </p>
               )}
               {/* Cancelling releases any batches already held, so it stays
@@ -868,6 +888,10 @@ export function Transfers() {
       key: "status",
       header: "Status",
       card: "secondary",
+      // A badge is as wide as its word. Sharing the spare width put a corridor
+      // of dead space between it and the column before it on every one of
+      // these four tables.
+      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
@@ -943,9 +967,11 @@ export function Transfers() {
               Presented as one button each rather than a row of three, so the
               next step is unambiguous.
             */}
-            {(acting.status === "DRAFT" ||
-              acting.status === "PENDING_APPROVAL") &&
-              can("transfer.approve") && (
+            {/* DRAFT only, as the server has it. A transfer never takes
+                PENDING_APPROVAL — DRAFT, APPROVED, IN_TRANSIT, COMPLETED and
+                CANCELLED are the whole set — so widening this changed the
+                logic to cover a state that cannot happen. */}
+            {acting.status === "DRAFT" && can("transfer.approve") && (
                 <Button
                   variant="primary"
                   loading={action.isPending}
@@ -1096,6 +1122,10 @@ export function Adjustments() {
       key: "status",
       header: "Status",
       card: "secondary",
+      // A badge is as wide as its word. Sharing the spare width put a corridor
+      // of dead space between it and the column before it on every one of
+      // these four tables.
+      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
