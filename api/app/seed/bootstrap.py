@@ -66,6 +66,12 @@ USER_DEFS = [
     ("customer@cityhospital.co.in", "City Hospital", CUSTOMER, None),
 ]
 
+#: The customer account and the buyer it speaks for, paired here so the two
+#: cannot drift. Without the link the CUSTOMER role has no way to tell its own
+#: orders from anyone else's and is shown none of them.
+CUSTOMER_ACCOUNT_EMAIL = "customer@cityhospital.co.in"
+CUSTOMER_ACCOUNT_CODE = "CUST-001"
+
 
 def _check_password() -> None:
     """Refuse to create well-known accounts on anything but a dev machine."""
@@ -444,6 +450,17 @@ def seed(db: Session) -> None:
                      state_code="GJ", credit_limit=Decimal("200000")),
             Customer(code="WALK-IN", name="Walk-in Customer", state_code="MH"),
         ])
+    db.flush()
+
+    # The customer login speaks for a buyer, and this is where it is told
+    # which one. Done here rather than beside the other accounts above because
+    # the users are created before any customer exists — and unconditionally
+    # rather than only on a fresh database, so a seed run repairs an account
+    # that predates the column.
+    buyer = db.scalar(select(Customer).where(Customer.code == CUSTOMER_ACCOUNT_CODE))
+    account = db.scalar(select(User).where(User.email == CUSTOMER_ACCOUNT_EMAIL))
+    if buyer is not None and account is not None:
+        account.customer_id = buyer.id
     db.flush()
 
     # --- Products -----------------------------------------------------------

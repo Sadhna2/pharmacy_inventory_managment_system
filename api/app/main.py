@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import DataError
 
 from app.ai.anomaly import router as anomaly_router
 from app.ai.forecasting import router as forecasting_router
@@ -143,6 +144,40 @@ async def validation_handler(
         "Validation failed",
         "One or more fields are invalid",
         errors,
+    )
+
+
+@app.exception_handler(DataError)
+async def data_error_handler(request: Request, exc: DataError) -> JSONResponse:
+    """A value the database could not accept is the caller's problem, not ours.
+
+    The one that actually happens: an id above 2147483647. Every `{id}` path
+    here is a Python `int`, which has no upper bound, so it sails through
+    validation and Postgres rejects the comparison against an `integer`
+    column — surfacing as a bare 500, the same answer the API gives when it is
+    genuinely broken. Anyone probing ids would read that as "found something
+    and crashed it", which is the opposite of the truth.
+
+    422 rather than 404 because this is not "no such row": the value is not a
+    usable identifier at all, and the same fault arrives through numeric
+    filters where 404 would make no sense.
+
+    Scoped to DataError deliberately. Its siblings — IntegrityError, the
+    connection failures — are ours, and must keep reaching the handler below
+    that logs a trace.
+    """
+    log.warning(
+        "database_rejected_value",
+        path=request.url.path,
+        request_id=getattr(request.state, "request_id", None),
+        error=type(exc.orig).__name__ if exc.orig else type(exc).__name__,
+    )
+    return _problem(
+        request,
+        422,
+        "/errors/validation",
+        "Validation failed",
+        "A value in this request is outside the range the system can store.",
     )
 
 

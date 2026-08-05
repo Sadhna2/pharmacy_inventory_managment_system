@@ -21,6 +21,7 @@ from app.models.documents import (
 )
 from app.models.enums import MovementType, StockStatus
 from app.models.masters import Product, Warehouse
+from app.models.stock import StockMovement
 from app.services import allocation, ledger, numbering
 
 
@@ -133,8 +134,6 @@ def dispatch_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTr
         )
 
     for line in sorted(transfer.lines, key=lambda line_: line_.product_id):
-        product = db.get(Product, line.product_id)
-
         # Resolve WHERE the stock physically is. The balance grain includes the
         # bin, so an outbound movement must name the bin holding the stock or
         # it would look at an empty row.
@@ -146,16 +145,21 @@ def dispatch_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTr
             min_shelf_life_days=0,
             lot_id=line.lot_id,
         )
+        # A quantity that spans two batches is ordinary, not exceptional: FEFO
+        # empties the oldest lot and rolls into the next, and asking for 150
+        # when the front lot holds 100 is exactly what a branch does. This used
+        # to refuse — after approval, with no way to cancel, so the transfer
+        # stuck permanently and the message told the raiser to split lines by
+        # batches they had no screen to look up. The ledger already carries a
+        # lot per row, so the split is simply recorded rather than rejected.
         lots = {s.lot_id for s in slices}
-        if len(lots) > 1:
-            raise ValidationError(
-                f"{product.sku}: quantity spans multiple batches. "
-                "Create one transfer line per batch."
-            )
-        line.lot_id = slices[0].lot_id
+        # The line's own lot names the batch only when there is exactly one.
+        # None means "see the ledger" — writing one of several here would
+        # label the whole transfer with a batch that was part of it.
+        line.lot_id = slices[0].lot_id if len(lots) == 1 else None
 
-        # One outbound movement per source bin...
         for slice_ in slices:
+            # Out of the source bin...
             ledger.post_movement(
                 db,
                 product_id=line.product_id,
@@ -170,27 +174,89 @@ def dispatch_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTr
                 reference_id=transfer.id,
                 notes=f"Dispatch {transfer.transfer_number}",
             )
-
-        # ...and one IN_TRANSIT row at the destination. Stock on a truck is in
-        # no bin, which is exactly what bin_id=None means here.
-        ledger.post_movement(
-            db,
-            product_id=line.product_id,
-            warehouse_id=transfer.to_warehouse_id,
-            quantity=line.quantity,
-            movement_type=MovementType.TRANSFER_DISPATCH,
-            user_id=user_id,
-            lot_id=line.lot_id,
-            status=StockStatus.IN_TRANSIT,
-            reference_type="TRANSFER",
-            reference_id=transfer.id,
-            notes=f"In transit from {transfer.from_warehouse.name}",
-        )
+            # ...and onto the road, batch by batch. Paired one-for-one with
+            # the row above so quantity is conserved per batch and not merely
+            # in total, which is what lets receipt put each batch away as
+            # itself. Stock on a truck is in no bin — that is `bin_id=None`.
+            ledger.post_movement(
+                db,
+                product_id=line.product_id,
+                warehouse_id=transfer.to_warehouse_id,
+                quantity=slice_.quantity,
+                movement_type=MovementType.TRANSFER_DISPATCH,
+                user_id=user_id,
+                lot_id=slice_.lot_id,
+                status=StockStatus.IN_TRANSIT,
+                reference_type="TRANSFER",
+                reference_id=transfer.id,
+                notes=f"In transit from {transfer.from_warehouse.name}",
+            )
 
     transfer.status = DocumentStatus.IN_TRANSIT
     transfer.dispatched_at = datetime.now(UTC)
     db.flush()
     return transfer
+
+
+#: The states a transfer can still be abandoned from — everything before the
+#: stock has physically left. Once it is IN_TRANSIT the goods are on a road and
+#: the document cannot be wished away; that lorry has to arrive somewhere, so
+#: the answer there is to receive it and transfer it back, which leaves both
+#: movements in the ledger where an auditor can see them.
+CANCELLABLE = (
+    DocumentStatus.DRAFT,
+    DocumentStatus.PENDING_APPROVAL,
+    DocumentStatus.APPROVED,
+)
+
+
+def cancel_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTransfer:
+    """Abandon a transfer that has not shipped.
+
+    APPROVED is included deliberately, and it is the case that mattered: a
+    transfer could be approved and then fail every dispatch attempt, with
+    nothing on any screen able to close it. It sat in the list as a permanent
+    piece of work nobody could finish.
+
+    Nothing is posted or unposted here. A transfer reserves no stock before
+    dispatch, so cancelling one moves nothing and frees nothing — it only stops
+    the document being offered for dispatch again.
+    """
+    transfer = _get_transfer(db, transfer_id)
+    if transfer.status not in CANCELLABLE:
+        raise ConflictError(
+            f"Cannot cancel a transfer in state {transfer.status.value}"
+        )
+    transfer.status = DocumentStatus.CANCELLED
+    db.flush()
+    return transfer
+
+
+def _in_transit_legs(db: Session, transfer: StockTransfer) -> list[StockMovement]:
+    """The rows dispatch put on the road for this transfer, one per batch.
+
+    The ledger is the record of what shipped, so it is also the record of what
+    can be received. Reading it back means a transfer whose quantity was drawn
+    from two batches arrives as those two batches, and a receipt can never post
+    more than a dispatch sent.
+
+    Filtered to positive IN_TRANSIT dispatch rows: dispatch writes a matching
+    negative row at the source, and receipt writes a negative IN_TRANSIT row
+    here, so only the positive ones are the outstanding load.
+    """
+    return list(
+        db.scalars(
+            select(StockMovement)
+            .where(
+                StockMovement.reference_type == "TRANSFER",
+                StockMovement.reference_id == transfer.id,
+                StockMovement.movement_type == MovementType.TRANSFER_DISPATCH,
+                StockMovement.status == StockStatus.IN_TRANSIT,
+                StockMovement.quantity > 0,
+            )
+            .order_by(StockMovement.id)
+        )
+    )
 
 
 def receive_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTransfer:
@@ -201,19 +267,30 @@ def receive_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTra
             f"Only in-transit transfers can be received (currently {transfer.status.value})"
         )
 
-    for line in sorted(transfer.lines, key=lambda line_: line_.product_id):
-        product = db.get(Product, line.product_id)
+    # What to put away is read back from the ledger rather than from the line,
+    # because a line's `lot_id` cannot express a quantity that travelled as two
+    # batches. These are the exact rows dispatch wrote, so receipt lands each
+    # batch as itself and the totals cannot drift from what actually shipped.
+    legs = _in_transit_legs(db, transfer)
+    if not legs:
+        raise ConflictError(
+            f"{transfer.transfer_number} has no dispatched stock to receive"
+        )
+
+    received: dict[int, Decimal] = {}
+    for leg in legs:
+        product = db.get(Product, leg.product_id)
         put_away_bin = allocation.default_bin(db, transfer.to_warehouse_id, product)
 
         # Two legs: leave IN_TRANSIT (bin-less), arrive AVAILABLE in a bin.
         ledger.post_movement(
             db,
-            product_id=line.product_id,
+            product_id=leg.product_id,
             warehouse_id=transfer.to_warehouse_id,
-            quantity=-line.quantity,
+            quantity=-leg.quantity,
             movement_type=MovementType.TRANSFER_RECEIPT,
             user_id=user_id,
-            lot_id=line.lot_id,
+            lot_id=leg.lot_id,
             status=StockStatus.IN_TRANSIT,
             reference_type="TRANSFER",
             reference_id=transfer.id,
@@ -221,19 +298,24 @@ def receive_transfer(db: Session, transfer_id: int, *, user_id: int) -> StockTra
         )
         ledger.post_movement(
             db,
-            product_id=line.product_id,
+            product_id=leg.product_id,
             warehouse_id=transfer.to_warehouse_id,
-            quantity=line.quantity,
+            quantity=leg.quantity,
             movement_type=MovementType.TRANSFER_RECEIPT,
             user_id=user_id,
             bin_id=put_away_bin,
-            lot_id=line.lot_id,
+            lot_id=leg.lot_id,
             status=StockStatus.AVAILABLE,
             reference_type="TRANSFER",
             reference_id=transfer.id,
             notes=f"Put away from {transfer.transfer_number}",
         )
-        line.qty_received = line.quantity
+        received[leg.product_id] = received.get(
+            leg.product_id, Decimal("0")
+        ) + leg.quantity
+
+    for line in transfer.lines:
+        line.qty_received = received.get(line.product_id, Decimal("0"))
 
     transfer.status = DocumentStatus.COMPLETED
     transfer.received_at = datetime.now(UTC)
@@ -270,6 +352,17 @@ def create_adjustment(
     for line in lines:
         if Decimal(line["quantity"]) == 0:
             raise ValidationError("Adjustment quantity cannot be zero")
+        # Refuse now what approval would refuse later. A batch-tracked product
+        # with no lot named used to be accepted here and then rejected by every
+        # attempt to approve it, leaving a document that could be neither
+        # posted nor withdrawn sitting at the top of the approver's queue.
+        ledger.validate_line(
+            db,
+            product_id=line["product_id"],
+            quantity=Decimal(line["quantity"]),
+            lot_id=line.get("lot_id"),
+            bin_id=line.get("bin_id"),
+        )
         db.add(
             StockAdjustmentLine(
                 stock_adjustment_id=adjustment.id,
@@ -279,6 +372,37 @@ def create_adjustment(
                 quantity=Decimal(line["quantity"]),
             )
         )
+    db.flush()
+    return adjustment
+
+
+def cancel_adjustment(
+    db: Session, adjustment_id: int, *, user_id: int
+) -> StockAdjustment:
+    """Withdraw an adjustment that has not posted.
+
+    The way out for a document an approver will not pass — and the way out for
+    the raiser who has spotted their own mistake. Only PENDING_APPROVAL can be
+    cancelled: once approved, the adjustment is in the ledger, and the ledger
+    is corrected by a reversing entry, never by changing what it says happened.
+
+    Unlike approval, the raiser may cancel their own: separation of duties
+    exists to stop one person moving stock unwatched, and withdrawing a
+    document moves nothing.
+    """
+    adjustment = db.scalar(
+        select(StockAdjustment)
+        .options(selectinload(StockAdjustment.lines))
+        .where(StockAdjustment.id == adjustment_id)
+    )
+    if adjustment is None:
+        raise NotFoundError(f"Adjustment {adjustment_id} not found")
+    if adjustment.status != DocumentStatus.PENDING_APPROVAL:
+        raise ConflictError(
+            f"Cannot cancel an adjustment in state {adjustment.status.value}"
+        )
+
+    adjustment.status = DocumentStatus.CANCELLED
     db.flush()
     return adjustment
 

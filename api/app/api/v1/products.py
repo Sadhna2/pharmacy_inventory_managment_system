@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.deps import require_permission
 from app.core.errors import ConflictError, NotFoundError
 from app.db.session import get_db
-from app.models.enums import StockStatus
+from app.models.enums import StockStatus, TrackingMode
 from app.models.identity import User
 from app.models.masters import Product
 from app.models.stock import StockBalance
@@ -53,7 +53,13 @@ def _to_out(product: Product, on_hand: Decimal = Decimal("0"),
 def list_products(
     q: str | None = Query(None, description="Search SKU, name, composition or barcode"),
     category_id: int | None = None,
-    tracking_mode: str | None = None,
+    # Typed as the enum, not `str`. As a plain string an unrecognised value
+    # reached the query and Postgres rejected the comparison against the enum
+    # column, which surfaced as an anonymous 500 — the same reply the client
+    # gets when the server is genuinely broken. FastAPI now refuses it at the
+    # edge with a 422 that names the parameter and lists what it accepts, and
+    # the value appears in the OpenAPI schema so the caller need not guess.
+    tracking_mode: TrackingMode | None = None,
     is_active: bool | None = None,
     below_reorder: bool = False,
     page: int = Query(1, ge=1),
