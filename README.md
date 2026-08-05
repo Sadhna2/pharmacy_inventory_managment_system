@@ -33,7 +33,8 @@ kept because they explain *why* a given line is written the way it is.
 | [Architecture](docs/ARCHITECTURE.md) | System, layer, ledger and deployment diagrams; the request path; the stack |
 | [ER diagram](docs/ER-DIAGRAM.md) | 40 tables in five readable groups, read from a live database |
 | [Project report](docs/PROJECT-REPORT.md) | Problem, solution, implementation, testing, **limitations**, future scope |
-| [Slides](docs/SLIDES.md) | Review/demo deck with speaker notes |
+| [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | 18-slide review/demo deck, speaker notes in the notes pane |
+| [Slides — source](docs/SLIDES.md) | The same deck as Markdown, for diffing and editing |
 | [Demo video script](docs/DEMO-VIDEO-SCRIPT.md) | Shot-by-shot script, ~5 minutes, with recovery notes |
 | [Product guide](docs/product-guide/guide.html) | Screen-by-screen user manual with screenshots |
 
@@ -230,9 +231,28 @@ set `SEED_PASSWORD` before seeding and use that value to sign in:
 export SEED_PASSWORD='pick-something-here'
 ```
 
-If you leave it unset, the seed falls back to a placeholder for local convenience
+If you leave it unset, the seed falls back to `ChangeMe@123` for local convenience
 and refuses to run at all unless `ENV=development`. Run the seed step to see which
 password is in effect — it prints it on completion.
+
+### Changing it after the first seed
+
+`SEED_PASSWORD` is only read when the accounts are **created**. The seed
+short-circuits on an already-populated database — it has to, or re-running it
+would collide on unique constraints and double every opening balance — so
+editing `.env` and restarting leaves the old hash in place and the new password
+will not sign you in. The seed now says so rather than letting you find out at
+the login screen. To apply it:
+
+```bash
+docker compose run --rm migrate python -m app.seed.bootstrap --reset-passwords
+```
+
+Natively that is `cd api && .venv/bin/python -m app.seed.bootstrap --reset-passwords`.
+It is an explicit command and not part of a normal boot, because passwords are
+changeable in the app (`/auth/change-password`) and rehashing on every start
+would quietly undo a real change. Wiping and reseeding — `docker compose down -v
+&& docker compose up` — works too, and costs you the data.
 
 | Email | Role | What it demonstrates |
 |---|---|---|

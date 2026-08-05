@@ -8,6 +8,7 @@ The full 2-year synthetic history for forecasting is Layer 2 work (§15).
 
 import hashlib
 import os
+import sys
 from datetime import timedelta
 from decimal import Decimal
 
@@ -25,7 +26,7 @@ from app.core.permissions import (
     ROLE_PERMISSIONS,
     STAFF,
 )
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db.session import SessionLocal
 from app.models.enums import (
     DrugSchedule,
@@ -56,6 +57,16 @@ _DEFAULT_DEV_PASSWORD = "ChangeMe@123"
 DEV_PASSWORD = os.environ.get("SEED_PASSWORD") or _DEFAULT_DEV_PASSWORD
 
 
+#: The four demo accounts, at module level so the seed that creates them and
+#: the password check below cannot drift apart.
+USER_DEFS = [
+    ("admin@pharmacy.co.in", "Priya Nair", ADMIN, None),
+    ("manager@pharmacy.co.in", "Rahul Desai", MANAGER, None),
+    ("staff@pharmacy.co.in", "Anjali Rao", STAFF, "BR-AND"),
+    ("customer@cityhospital.co.in", "City Hospital", CUSTOMER, None),
+]
+
+
 def _check_password() -> None:
     """Refuse to create well-known accounts on anything but a dev machine."""
     if DEV_PASSWORD == _DEFAULT_DEV_PASSWORD and settings.env != "development":
@@ -63,6 +74,50 @@ def _check_password() -> None:
             "Refusing to seed demo accounts with the default password while "
             f"ENV={settings.env}. Set SEED_PASSWORD to something private first."
         )
+
+
+def reset_demo_passwords(db: Session) -> int:
+    """Set the four demo accounts back to the current SEED_PASSWORD.
+
+    Deliberately *not* run on every boot. Passwords are changeable through the
+    application (`POST /auth/change-password`, and an admin reset), so rehashing
+    on each `docker compose up` would quietly undo a real change every time the
+    stack restarted — a worse bug than the one it fixes. This is an explicit
+    act: `python -m app.seed.bootstrap --reset-passwords`.
+    """
+    changed = 0
+    for email, *_ in USER_DEFS:
+        user = db.scalar(select(User).where(User.email == email))
+        if user is not None and not verify_password(DEV_PASSWORD, user.password_hash):
+            user.password_hash = hash_password(DEV_PASSWORD)
+            changed += 1
+    db.flush()
+    return changed
+
+
+def _warn_if_password_drifted(db: Session) -> None:
+    """Say so when SEED_PASSWORD no longer opens the accounts it names.
+
+    Changing SEED_PASSWORD in `.env` and restarting looks like it should take
+    effect, and does nothing: the seed short-circuits on an already-populated
+    database, so the stored hash keeps whatever the *first* run used. You then
+    meet a login that rejects the only password you were told to use, with
+    nothing on screen connecting the two.
+    """
+    if not os.environ.get("SEED_PASSWORD"):
+        return  # nothing was asked for, so nothing can have drifted
+    admin = db.scalar(select(User).where(User.email == USER_DEFS[0][0]))
+    if admin is None or verify_password(DEV_PASSWORD, admin.password_hash):
+        return
+    print(
+        "\n  WARNING: SEED_PASSWORD does not match the existing demo accounts."
+        "\n  They keep the password from the run that created them — this "
+        "database was\n  seeded before, so the new value has not been applied "
+        "and will not sign you in."
+        "\n"
+        "\n  Apply it:   python -m app.seed.bootstrap --reset-passwords"
+        "\n  Start over: docker compose down -v && docker compose up\n"
+    )
 
 
 def sync_permissions(db: Session) -> dict[str, Permission]:
@@ -343,13 +398,7 @@ def seed(db: Session) -> None:
     db.flush()
 
     # --- Users --------------------------------------------------------------
-    user_defs = [
-        ("admin@pharmacy.co.in", "Priya Nair", ADMIN, None),
-        ("manager@pharmacy.co.in", "Rahul Desai", MANAGER, None),
-        ("staff@pharmacy.co.in", "Anjali Rao", STAFF, "BR-AND"),
-        ("customer@cityhospital.co.in", "City Hospital", CUSTOMER, None),
-    ]
-    for email, full_name, role_code, wh_code in user_defs:
+    for email, full_name, role_code, wh_code in USER_DEFS:
         if not db.scalar(select(User).where(User.email == email)):
             db.add(
                 User(
@@ -695,6 +744,7 @@ def _seed_opening_stock(db, products, warehouses, user_id: int) -> None:
 
 
 def main() -> None:
+    reset_passwords = "--reset-passwords" in sys.argv
     _check_password()
     db = SessionLocal()
     try:
@@ -710,6 +760,16 @@ def main() -> None:
 
         if db.scalar(select(User.id).limit(1)) is not None:
             print(f"Database already seeded — skipping. ({flags} feature flags synced)")
+            if reset_passwords:
+                n = reset_demo_passwords(db)
+                db.commit()
+                print(
+                    f"Reset {n} demo account(s) to the current SEED_PASSWORD."
+                    if n
+                    else "Demo accounts already match SEED_PASSWORD — nothing to do."
+                )
+            else:
+                _warn_if_password_drifted(db)
             return
 
         print("Seeding pharmacy inventory...")

@@ -27,3 +27,9 @@ Caddyfile       text eol=lf
 *.pdf           binary
 *.zip           binary
 *.ico           binary
+# Office files are ZIP archives. `* text=auto` above would happily "normalise"
+# one Git mis-sniffed as text and hand back a file PowerPoint refuses to open.
+*.pptx          binary
+*.potx          binary
+*.docx          binary
+*.xlsx          binary
