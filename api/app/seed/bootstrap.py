@@ -124,8 +124,10 @@ FEATURES: list[tuple[str, str, str, bool]] = [
         "features.invoice_ocr",
         "Invoice scanning",
         "Read a distributor invoice from a photo or PDF and pre-fill a goods "
-        "receipt, for a human to check line by line. Designed, not built.",
-        False,
+        "receipt, for a human to check line by line. Every reading is checked "
+        "against the invoice's own arithmetic and its GSTIN checksum before "
+        "anyone sees it, and the endpoint writes nothing to the ledger.",
+        True,
     ),
 ]
 
@@ -157,6 +159,15 @@ def sync_feature_flags(db: Session) -> int:
         flag.label = label
         flag.description = description
         flag.sort_order = order
+        # A feature that has just been built. Its row was forced off while it
+        # was unimplemented, and leaving `is_enabled` alone — the rule for
+        # every other row — would keep it off forever on any database that
+        # already exists, including the deployed one. Nobody switched it off,
+        # so there is no administrator decision here to preserve: this is the
+        # same "built features ship on" rule the insert branch applies, caught
+        # one deploy later.
+        if implemented and not flag.is_implemented:
+            flag.is_enabled = True
         flag.is_implemented = implemented
         if not implemented:
             # Belt and braces: a feature that was removed must not stay live

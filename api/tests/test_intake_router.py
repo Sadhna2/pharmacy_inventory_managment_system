@@ -122,6 +122,11 @@ def client(monkeypatch):
     app.dependency_overrides[get_db] = lambda: session
     app.dependency_overrides[intake_router.RECEIVER] = lambda: user
     app.dependency_overrides[require_permission("grn.create")] = lambda: user
+    # These tests run against a fake session that holds no feature_flags rows,
+    # so the real switch would read "off" and every case here would 404 on the
+    # gate before reaching the code it means to exercise. Whether the switch
+    # works is its own test, below.
+    app.dependency_overrides[intake_router.LIVE] = lambda: None
 
     monkeypatch.setattr(service, "extract_invoice",
                         lambda image, mime_type="image/png": dict(EXTRACTION))
@@ -344,3 +349,26 @@ def test_a_document_with_no_lines_does_not_look_clean(client, monkeypatch):
     body = upload(client).json()
     assert body["summary"]["ready"] is False
     assert any(f["field"] == "lines" for f in body["flags"])
+
+
+def test_switching_invoice_scanning_off_closes_the_endpoint(client, monkeypatch):
+    """The administrator's switch has to be enforced here, not just in the menu.
+
+    This was the one AI router that read the permission but never the feature
+    flag, so turning invoice scanning off hid the button and left the endpoint
+    answering — and still spending the extraction budget — for anyone with the
+    URL or a stale tab.
+
+    The gate is dropped for every other test in this file, so without this one
+    nothing would notice if it were removed again.
+    """
+    from app.services import settings as settings_service
+
+    # Drop the fixture's bypass so the real gate runs, and report every
+    # feature as off underneath it. Patching `features` rather than the
+    # dependency keeps the route's own registered dependency in play — the
+    # thing being tested — and sidesteps the module-level cache inside it.
+    del app.dependency_overrides[intake_router.LIVE]
+    monkeypatch.setattr(settings_service, "features", lambda _db: {})
+
+    assert upload(client).status_code == 404

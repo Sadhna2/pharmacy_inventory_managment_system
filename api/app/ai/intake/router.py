@@ -39,7 +39,7 @@ from app.ai.intake.schemas import (
     RememberAliasIn,
 )
 from app.ai.intake.validate import Flag, Severity, validate_invoice
-from app.core.deps import require_permission, scoped_warehouse_ids
+from app.core.deps import require_feature, require_permission, scoped_warehouse_ids
 from app.core.errors import (
     ExternalServiceError,
     NotFoundError,
@@ -56,6 +56,13 @@ from app.services import audit
 router = APIRouter(prefix="/ai/intake", tags=["AI · invoice intake"])
 
 RECEIVER = require_permission("grn.create")
+
+#: The administrator's off switch, enforced here rather than only hidden in the
+#: sidebar. This was the one AI router without it, which made the settings page
+#: a liar: turning invoice scanning off closed nothing, and the endpoint kept
+#: answering — and kept spending the extraction budget — for anyone who knew
+#: the URL. Every other capability in `app/ai/` has been gated since it shipped.
+LIVE = require_feature("features.invoice_ocr")
 
 #: Guards the upload before anything is read into memory. FastAPI streams to a
 #: spooled file, so the size is only known after reading; this is the ceiling
@@ -102,6 +109,7 @@ async def read_invoice(
     purchase_order_id: int | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(RECEIVER),
+    __: None = Depends(LIVE),
 ) -> InvoiceIntakeOut:
     """Read an invoice into a draft goods receipt. Creates nothing."""
     order = None
@@ -280,6 +288,7 @@ def remember_alias(
     payload: RememberAliasIn,
     db: Session = Depends(get_db),
     user: User = Depends(RECEIVER),
+    __: None = Depends(LIVE),
 ) -> Message:
     """Record what a distributor calls one of our products.
 
@@ -317,6 +326,7 @@ def open_orders(
     supplier_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(RECEIVER),
+    __: None = Depends(LIVE),
 ) -> list[dict]:
     """Orders a delivery from this supplier could be against.
 
