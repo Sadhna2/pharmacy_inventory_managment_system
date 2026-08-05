@@ -474,14 +474,20 @@ def sales_order_invoice(
     # GSTIN" instead of "no such order". Whether the firm is registered is not
     # something an unauthorised caller gets to learn, and a scope check that
     # can be pre-empted by a config check is not reliably a scope check.
-    if not settings.can_issue_tax_invoice:
+    # Whose registration this supply was made under. GST registers per state,
+    # so the branch the goods left is the registered person here; the firm's
+    # configured GSTIN is the fallback for a chain that has only ever traded
+    # in one state and never recorded a branch registration.
+    registration = (so.warehouse.gstin or "").strip() or settings.seller_gstin
+    if not (settings.seller_legal_name and registration):
         # Refusing beats emitting a document captioned TAX INVOICE with the
         # registration missing: the caption is the claim, and an invoice
         # without the supplier's GSTIN is not one.
         raise ConflictError(
-            "This system has no GSTIN configured for the selling firm, so it "
-            "cannot issue a tax invoice. Set SELLER_LEGAL_NAME and "
-            "SELLER_GSTIN."
+            f"No GSTIN is recorded for {so.warehouse.name} and none is "
+            f"configured for the firm, so this supply cannot be invoiced. "
+            f"Set the branch's GSTIN in Master data, or SELLER_LEGAL_NAME "
+            f"and SELLER_GSTIN for the firm."
         )
 
     if so.status not in INVOICEABLE:
@@ -500,7 +506,12 @@ def sales_order_invoice(
                 # which is what belongs on the document; the firm's registered
                 # address is the fallback when a branch has none recorded.
                 address=so.warehouse.address or settings.seller_address,
-                gstin=settings.seller_gstin,
+                # The branch's own registration, not the firm's. These two
+                # have to agree with the state printed beside them — a GSTIN
+                # opens with its state's numeric code — and until this column
+                # existed they could not: an order out of the Gujarat branch
+                # printed "State: GJ (24)" against a GSTIN opening "27".
+                gstin=registration,
                 state_code=so.warehouse.state_code,
             ),
             # The only name this system has for a state is the two-letter code

@@ -12,45 +12,58 @@
 export interface State {
   code: string;
   name: string;
+  /**
+   * The statutory *numeric* code, which is what a GSTIN opens with.
+   *
+   * Two codes for one state, because they answer to different masters: the
+   * two-letter one is what people type and what every `state_code` column
+   * holds; the numeric one is the first two characters of every GSTIN issued
+   * in that state. A branch's registration has to start with its own, so the
+   * form can name the digits to expect instead of waiting for a refusal.
+   *
+   * Mirrors `STATE_CODES` in `api/app/services/gst.py`, which is the
+   * authority — this copy exists only to label a field before submission.
+   */
+  gstPrefix: string;
 }
 
 export const STATES: State[] = [
-  { code: "AN", name: "Andaman & Nicobar Islands" },
-  { code: "AP", name: "Andhra Pradesh" },
-  { code: "AR", name: "Arunachal Pradesh" },
-  { code: "AS", name: "Assam" },
-  { code: "BR", name: "Bihar" },
-  { code: "CH", name: "Chandigarh" },
-  { code: "CG", name: "Chhattisgarh" },
-  { code: "DH", name: "Dadra & Nagar Haveli and Daman & Diu" },
-  { code: "DL", name: "Delhi" },
-  { code: "GA", name: "Goa" },
-  { code: "GJ", name: "Gujarat" },
-  { code: "HR", name: "Haryana" },
-  { code: "HP", name: "Himachal Pradesh" },
-  { code: "JK", name: "Jammu & Kashmir" },
-  { code: "JH", name: "Jharkhand" },
-  { code: "KA", name: "Karnataka" },
-  { code: "KL", name: "Kerala" },
-  { code: "LA", name: "Ladakh" },
-  { code: "LD", name: "Lakshadweep" },
-  { code: "MP", name: "Madhya Pradesh" },
-  { code: "MH", name: "Maharashtra" },
-  { code: "MN", name: "Manipur" },
-  { code: "ML", name: "Meghalaya" },
-  { code: "MZ", name: "Mizoram" },
-  { code: "NL", name: "Nagaland" },
-  { code: "OD", name: "Odisha" },
-  { code: "PY", name: "Puducherry" },
-  { code: "PB", name: "Punjab" },
-  { code: "RJ", name: "Rajasthan" },
-  { code: "SK", name: "Sikkim" },
-  { code: "TN", name: "Tamil Nadu" },
-  { code: "TS", name: "Telangana" },
-  { code: "TR", name: "Tripura" },
-  { code: "UP", name: "Uttar Pradesh" },
-  { code: "UK", name: "Uttarakhand" },
-  { code: "WB", name: "West Bengal" },
+  { code: "AN", name: "Andaman & Nicobar Islands", gstPrefix: "35" },
+  { code: "AP", name: "Andhra Pradesh", gstPrefix: "37" },
+  { code: "AR", name: "Arunachal Pradesh", gstPrefix: "12" },
+  { code: "AS", name: "Assam", gstPrefix: "18" },
+  { code: "BR", name: "Bihar", gstPrefix: "10" },
+  { code: "CH", name: "Chandigarh", gstPrefix: "04" },
+  { code: "CG", name: "Chhattisgarh", gstPrefix: "22" },
+  { code: "DH", name: "Dadra & Nagar Haveli and Daman & Diu", gstPrefix: "26" },
+  { code: "DL", name: "Delhi", gstPrefix: "07" },
+  { code: "GA", name: "Goa", gstPrefix: "30" },
+  { code: "GJ", name: "Gujarat", gstPrefix: "24" },
+  { code: "HR", name: "Haryana", gstPrefix: "06" },
+  { code: "HP", name: "Himachal Pradesh", gstPrefix: "02" },
+  { code: "JK", name: "Jammu & Kashmir", gstPrefix: "01" },
+  { code: "JH", name: "Jharkhand", gstPrefix: "20" },
+  { code: "KA", name: "Karnataka", gstPrefix: "29" },
+  { code: "KL", name: "Kerala", gstPrefix: "32" },
+  { code: "LA", name: "Ladakh", gstPrefix: "38" },
+  { code: "LD", name: "Lakshadweep", gstPrefix: "31" },
+  { code: "MP", name: "Madhya Pradesh", gstPrefix: "23" },
+  { code: "MH", name: "Maharashtra", gstPrefix: "27" },
+  { code: "MN", name: "Manipur", gstPrefix: "14" },
+  { code: "ML", name: "Meghalaya", gstPrefix: "17" },
+  { code: "MZ", name: "Mizoram", gstPrefix: "15" },
+  { code: "NL", name: "Nagaland", gstPrefix: "13" },
+  { code: "OD", name: "Odisha", gstPrefix: "21" },
+  { code: "PY", name: "Puducherry", gstPrefix: "34" },
+  { code: "PB", name: "Punjab", gstPrefix: "03" },
+  { code: "RJ", name: "Rajasthan", gstPrefix: "08" },
+  { code: "SK", name: "Sikkim", gstPrefix: "11" },
+  { code: "TN", name: "Tamil Nadu", gstPrefix: "33" },
+  { code: "TS", name: "Telangana", gstPrefix: "36" },
+  { code: "TR", name: "Tripura", gstPrefix: "16" },
+  { code: "UP", name: "Uttar Pradesh", gstPrefix: "09" },
+  { code: "UK", name: "Uttarakhand", gstPrefix: "05" },
+  { code: "WB", name: "West Bengal", gstPrefix: "19" },
 ];
 
 const BY_CODE = new Map(STATES.map((s) => [s.code, s.name]));

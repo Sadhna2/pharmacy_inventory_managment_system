@@ -97,6 +97,11 @@ class Warehouse(Base, TimestampMixin):
     is_central: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Place of supply for GST: determines CGST/SGST vs IGST.
     state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    # This branch's own GST registration, because registration is per state.
+    # Every branch in one state shares a single GSTIN; a branch in another
+    # state has its own. Null falls back to the firm's configured GSTIN, which
+    # is right for a chain that has only ever operated in one state.
+    gstin: Mapped[str | None] = mapped_column(String(15))
     address: Mapped[str | None] = mapped_column(Text)
     allow_negative_stock: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False

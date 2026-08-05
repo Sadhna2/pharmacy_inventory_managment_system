@@ -153,8 +153,9 @@ tests unless marked otherwise.
 | FR-GST-2 | The split is derived from supplier and warehouse state codes, not entered |
 | FR-GST-3 | Tax is computed per line and rounded per document |
 | FR-GST-4 | GSTIN is validated including its mod-36 check character |
-| FR-GST-5 | A sales order can be rendered as a **GST tax invoice**: the supplier's GSTIN from configuration, the buyer's as recorded, place of supply, and per line the HSN code, quantity, rate, taxable value and tax |
-| FR-GST-5a | **No supplier GSTIN, no invoice.** Rule 46(b) makes it a mandatory particular, so with `SELLER_LEGAL_NAME` or `SELLER_GSTIN` unset the route refuses (409) rather than printing a document captioned TAX INVOICE that no buyer can claim credit against |
+| FR-GST-5 | A sales order can be rendered as a **GST tax invoice**: the supplying branch's GSTIN, the buyer's as recorded, place of supply, and per line the HSN code, quantity, rate, taxable value and tax |
+| FR-GST-4a | **A registration belongs to a state, not to the firm.** Each warehouse carries its own GSTIN, because GST registers per state and a branch in another state is a separately registered person. A branch with none recorded falls back to the firm's configured GSTIN, which is correct for a chain trading in one state. A GSTIN whose opening two digits disagree with its branch's state code is refused on write — that number is valid, it simply belongs somewhere else |
+| FR-GST-5a | **No supplier GSTIN, no invoice.** Rule 46(b) makes it a mandatory particular, so with neither a branch registration nor `SELLER_LEGAL_NAME` and `SELLER_GSTIN` set, the route refuses (409) rather than printing a document captioned TAX INVOICE that no buyer can claim credit against |
 | FR-GST-5b | An invoice is issued only against a supply that has happened — a shipped or completed order. Anything earlier, including allocated and picked, is refused (409) |
 | FR-GST-6 | The invoice states the CGST + SGST or IGST split the order was computed with, and repeats the document's rounding; it computes no tax of its own |
 | FR-GST-7 | **Rendering an invoice writes nothing** — no ledger row, no change of status, and no number of its own: it carries the sales order's |
@@ -348,6 +349,12 @@ Named deliberately, so their absence is a decision:
   invoice of FR-GST-5 is a document to hand across a counter, not one a portal
   has seen.
 - E-way bill generation
+- **Invoice numbering per registration.** GST expects each registration to keep
+  its own invoice series. Documents here are numbered from one chain-wide
+  sequence (`SO-000123`), so two branches in different states draw from the
+  same run of numbers. The branch each invoice was issued under is recorded and
+  printed (FR-GST-4a); only the series is shared. Changing it would renumber
+  every document already issued, which is a worse answer than naming it here.
 - Bulk data export — no CSV or Excel download anywhere. Screens are read where
   they are; documents print one at a time.
 - Prescription capture and dispensing against a prescription

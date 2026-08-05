@@ -4,12 +4,14 @@ The renderer itself is pinned down in `test_invoice_html.py`; what is at stake
 here is everything the *route* decides on the way in. Four things would break
 silently without these.
 
-The seller. The firm is not a table; its registered name and GSTIN are
-configuration, and the branch supplies only the address the goods left from.
-With no GSTIN configured the route refuses outright, because a document headed
-TAX INVOICE without the supplier's registration still renders, still looks
-right, and is not a tax invoice anyone can claim credit against. A placeholder
-or an em dash there would be worse than no document at all.
+The seller. The firm's registered *name* is configuration; the registration
+itself belongs to the branch, because GST registers per state and a branch in
+another state is a separately registered person. The branch also supplies the
+address the goods left from. With no registration to be found on either the
+branch or the firm the route refuses outright, because a document headed TAX
+INVOICE without the supplier's GSTIN still renders, still looks right, and is
+not a tax invoice anyone can claim credit against. A placeholder or an em dash
+there would be worse than no document at all.
 
 The status. An invoice is raised against a supply that has happened. A draft or
 cancelled order has no supply behind it, so printing one would put an invoice
@@ -50,11 +52,14 @@ from app.db.session import get_db
 from app.main import app
 from app.models.enums import DocumentStatus
 
-# The registration the tests issue under. Structurally a real GSTIN — 27 is
-# Maharashtra, matching the warehouse the stub orders ship from — so a test
-# that checks the state code against the number has something true to read.
+# The firm-wide fallback registration, and the Gujarat branch's own. Both
+# carry a correct mod-36 check digit and open with their own state's numeric
+# code — 27 Maharashtra, 24 Gujarat — so a test that reads the state against
+# the number has something true to read. The middle ten characters are the
+# firm's PAN and are shared, which is what makes two registrations one company.
 SELLER_NAME = "Sadhna Pharma Distributors Pvt Ltd"
-SELLER_GSTIN = "27AABCS9876P1ZK"
+SELLER_GSTIN = "27AABCS9876P1ZA"
+GUJARAT_GSTIN = "24AABCS9876P1ZG"
 SELLER_ADDRESS = "Unit 4, MIDC Phase II\nBhiwandi 421302"
 
 # --- Stubs ------------------------------------------------------------------
@@ -70,17 +75,18 @@ class _Party:
 
 @dataclass
 class _Warehouse:
-    """A warehouse carries no GSTIN column.
+    """A branch: where the goods left from, and under whose registration.
 
-    That absence is the whole reason the route has to compose a seller rather
-    than hand the warehouse straight to the renderer, so the stub keeps it. The
-    branch contributes an address and a state code; the registration comes from
-    configuration.
+    `gstin` is last and defaults to None so the older positional stubs still
+    build, and because None is the meaningful case as well as the convenient
+    one — it is what every row held before the column existed, and what a
+    single-state chain still holds.
     """
 
     name: str
     address: str | None
     state_code: str
+    gstin: str | None = None
 
 
 @dataclass
@@ -293,12 +299,15 @@ def test_an_inter_state_order_prints_igst_instead(fetch):
 # --- The seller --------------------------------------------------------------
 
 
-def test_the_seller_is_the_registered_firm_not_the_branch(fetch):
-    """A branch is a place; the registration belongs to the business."""
+def test_the_seller_is_named_as_the_firm_whichever_branch_supplied(fetch):
+    """One company, whichever of its registrations made the supply.
+
+    The legal name is the firm's throughout — a branch is not a separate
+    company, it is the same PAN registered in a second state.
+    """
     body = fetch(_order()).text
 
     assert SELLER_NAME in body
-    assert SELLER_GSTIN in body
     # The parties table prints seller first, buyer second.
     assert body.index(SELLER_NAME) < body.index("Sancheti Hospital")
 
@@ -331,6 +340,9 @@ def test_no_invoice_is_issued_at_all_without_a_configured_gstin(fetch, monkeypat
 
     assert response.status_code == 409
     detail = response.json()["detail"]
+    # Both places it could have come from, named: the branch by its own name,
+    # because "configure your GSTIN" is useless to someone with five branches.
+    assert "Bhiwandi Central Warehouse" in detail
     assert "SELLER_GSTIN" in detail
     # And nothing resembling the document leaked into the refusal.
     assert "TAX INVOICE" not in response.text
@@ -341,6 +353,67 @@ def test_a_configured_gstin_with_no_legal_name_is_equally_refused(fetch, monkeyp
     monkeypatch.setattr(settings, "seller_legal_name", "")
 
     assert fetch(_order()).status_code == 409
+
+
+def test_the_branch_supplies_the_registration_the_goods_went_out_under(fetch):
+    """The point of the whole column.
+
+    GST registers per state, so a branch in Gujarat is a separately registered
+    person with its own GSTIN — and the first two characters of a GSTIN *are*
+    the state's numeric code. Before this, the route printed the state from the
+    warehouse and the number from configuration, so a Gujarat order carried
+    "State: GJ (24)" beside a GSTIN opening "27". The document disagreed with
+    itself on its own face, and no buyer could have claimed credit against it.
+    """
+    gujarat = _Warehouse(
+        name="Ahmedabad Branch",
+        address="Plot 22, Naroda GIDC\nAhmedabad 382330",
+        state_code="GJ",
+        gstin=GUJARAT_GSTIN,
+    )
+
+    body = fetch(_order(warehouse=gujarat, is_interstate=True, place_of_supply="MH")).text
+
+    assert GUJARAT_GSTIN in body
+    assert SELLER_GSTIN not in body
+    # The number and the state beside it now say the same thing.
+    assert "GJ" in body and "24" in body
+
+
+def test_a_branch_with_its_own_registration_overrides_the_firms(fetch):
+    """Same state, still the branch's own — the fallback is a fallback, not a
+    tie-break. Otherwise a chain that had recorded its registrations properly
+    would still print the configured one wherever the two happened to differ,
+    and nobody would notice until they differed for a reason."""
+    own = "27AAPFU0939F1ZV"
+    branch = _Warehouse(WAREHOUSE.name, WAREHOUSE.address, "MH", own)
+
+    body = fetch(_order(warehouse=branch)).text
+
+    assert own in body
+    assert SELLER_GSTIN not in body
+
+
+def test_the_firms_registration_stands_in_for_a_branch_with_none_recorded(fetch):
+    """Every row held null the day the column was added, and a chain that has
+    only ever traded in one state has no reason to fill it in. Those invoices
+    must keep printing exactly what they printed before."""
+    body = fetch(_order()).text  # WAREHOUSE carries no GSTIN
+
+    assert SELLER_GSTIN in body
+
+
+def test_a_branch_registration_alone_is_enough_to_issue(fetch, monkeypatch):
+    """The firm-wide setting is not a precondition once branches carry their
+    own — a chain that records registrations per branch should never have to
+    also set a chain-wide one."""
+    monkeypatch.setattr(settings, "seller_gstin", "")
+    branch = _Warehouse(WAREHOUSE.name, WAREHOUSE.address, "MH", "27AAPFU0939F1ZV")
+
+    response = fetch(_order(warehouse=branch))
+
+    assert response.status_code == 200
+    assert "27AAPFU0939F1ZV" in response.text
 
 
 def test_the_buyers_gstin_prints_as_recorded(fetch):

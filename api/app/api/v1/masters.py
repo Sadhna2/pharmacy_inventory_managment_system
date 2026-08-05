@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_permission
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.session import get_db
 from app.models.enums import StockStatus
 from app.models.identity import User
@@ -47,7 +47,7 @@ from app.schemas.masters import (
     WarehouseOut,
     WarehouseUpdate,
 )
-from app.services import audit
+from app.services import audit, gst
 
 router = APIRouter(tags=["master data"])
 
@@ -309,6 +309,28 @@ def create_warehouse(
     return warehouse
 
 
+def _refuse_a_registration_from_another_state(
+    *, gstin: str | None, state_code: str | None
+) -> None:
+    """The cross-field half of the GSTIN rule, applied to a merged record.
+
+    Only the pairing. The shape and the checksum are the schema's job and have
+    already run on anything the caller sent; what cannot be judged there is
+    whether the number belongs to this branch's state, because a patch may
+    carry either field alone.
+    """
+    if gst.gstin_state_matches(gstin or "", state_code or "") is False:
+        message = (
+            f"a GSTIN opens with its state's code, so a branch in "
+            f"{state_code} needs one starting "
+            f"{gst.gstin_prefix_for_state(state_code or '')}, not "
+            f"{(gstin or '')[:2]} — a registration belongs to one state"
+        )
+        # Named against the field as well as spelled out in the detail, so the
+        # form can put it under the input the user just typed in.
+        raise ValidationError(message, [{"field": "gstin", "message": message}])
+
+
 @router.patch("/warehouses/{warehouse_id}", response_model=WarehouseOut)
 def update_warehouse(
     warehouse_id: int,
@@ -319,6 +341,20 @@ def update_warehouse(
     warehouse = db.get(Warehouse, warehouse_id)
     if warehouse is None:
         raise NotFoundError(f"Warehouse {warehouse_id} not found")
+
+    # The schema checks a GSTIN against the state in the *same* payload, and a
+    # patch need not carry both. Sending only the number therefore reached the
+    # database unchecked — precisely the mistake the column exists to prevent,
+    # because pasting head office's registration onto a branch is a one-field
+    # edit. Here the row is in hand, so the value not being changed can be read
+    # rather than assumed.
+    sent = payload.model_dump(exclude_unset=True)
+    if "gstin" in sent or "state_code" in sent:
+        _refuse_a_registration_from_another_state(
+            gstin=sent.get("gstin", warehouse.gstin),
+            state_code=sent.get("state_code", warehouse.state_code),
+        )
+
     _apply_update(db, warehouse, payload, entity="warehouse", user=user)
     db.refresh(warehouse)
     return warehouse

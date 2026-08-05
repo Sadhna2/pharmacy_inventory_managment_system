@@ -66,6 +66,22 @@ USER_DEFS = [
     ("customer@cityhospital.co.in", "City Hospital", CUSTOMER, None),
 ]
 
+#: The demo firm's GST registrations, one per state it trades in.
+#:
+#: One number per *state*, not per branch — the four Maharashtra warehouses
+#: share a single registration because a registration covers a state, and only
+#: Ahmedabad has its own because Gujarat is a separate one. The middle ten
+#: characters are the firm's PAN and are identical in both, which is what makes
+#: them read as one company rather than two.
+#:
+#: Both carry a correct mod-36 check digit, so the invoice scanner's own
+#: validator accepts them — a seed that shipped an invalid GSTIN would have the
+#: system contradicting itself the first time anyone photographed its output.
+STATE_REGISTRATIONS = {
+    "MH": "27AABCS9876P1ZA",
+    "GJ": "24AABCS9876P1ZG",
+}
+
 #: The customer account and the buyer it speaks for, paired here so the two
 #: cannot drift. Without the link the CUSTOMER role has no way to tell its own
 #: orders from anyone else's and is shown none of them.
@@ -371,6 +387,11 @@ def seed(db: Session) -> None:
             )
             db.add(wh)
             warehouses[code] = wh
+        # Set on existing rows too, so a database seeded before this column
+        # existed gains its registrations without being rebuilt. Never
+        # overwritten: a real GSTIN entered by hand outranks a demo one.
+        if not warehouses[code].gstin:
+            warehouses[code].gstin = STATE_REGISTRATIONS[state]
     db.flush()
 
     # --- Bins, including a cold room in the central warehouse ---------------

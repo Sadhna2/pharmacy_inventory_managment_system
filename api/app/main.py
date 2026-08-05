@@ -134,16 +134,34 @@ async def validation_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     errors = [
-        {"field": ".".join(str(p) for p in e["loc"][1:]), "message": e["msg"]}
+        {
+            "field": ".".join(str(p) for p in e["loc"][1:]),
+            # Pydantic prefixes anything a validator raises as ValueError with
+            # "Value error, ". That is a fact about pydantic, and it is read by
+            # someone filling in a form who has never heard of it.
+            "message": e["msg"].removeprefix("Value error, "),
+        }
         for e in exc.errors()
     ]
+
+    # A rule that spans two fields — a GSTIN against the state it must open
+    # with — belongs to the model, not to either field, so pydantic gives it no
+    # location and the form has nothing to hang it under. "One or more fields
+    # are invalid" is then the only thing the user is told, which is exactly
+    # the message that leaves someone re-reading a form for the mistake.
+    #
+    # So when the whole failure is location-less, its own words become the
+    # detail. Anything with a location keeps the summary, because those are
+    # already rendered against the field they name.
+    unplaced = [e["message"] for e in errors if not e["field"]]
+    detail = (
+        unplaced[0]
+        if len(unplaced) == len(errors) == 1
+        else "One or more fields are invalid"
+    )
+
     return _problem(
-        request,
-        422,
-        "/errors/validation",
-        "Validation failed",
-        "One or more fields are invalid",
-        errors,
+        request, 422, "/errors/validation", "Validation failed", detail, errors
     )
 
 

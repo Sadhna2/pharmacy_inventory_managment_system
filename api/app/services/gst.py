@@ -8,10 +8,15 @@ All money is Decimal. Never float — a rounding drift of a paisa per line
 becomes a reconciliation problem at scale.
 """
 
+import re
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 TWO_PLACES = Decimal("0.01")
+
+#: 2 digits of state, the holder's PAN, entity number, a literal Z, check char.
+GSTIN_SHAPE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
+_GSTIN_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _round(value: Decimal) -> Decimal:
@@ -44,16 +49,21 @@ def is_interstate(supply_state: str, recipient_state: str) -> bool:
 #: `state_code` column here holds the postal abbreviation, which is what people
 #: type and read; a GSTIN's first two characters are a *numeric* code from the
 #: same statute. Nothing converts between them until a GSTIN arrives from
-#: outside — which happens in exactly one place, `ai.intake.service`, when a
-#: photographed invoice is read.
+#: outside — which happens in two places now: `ai.intake.service`, when a
+#: photographed invoice is read, and a warehouse's own registration.
+#:
+#: Several rows are duplicates by design, because a state can answer to more
+#: than one abbreviation and a record may hold either — `UT`/`UK`, `TG`/`TS`,
+#: `OR`/`OD`, `CT`/`CG`, and `DD`/`DN`/`DH` for the territory those two were
+#: merged into. `DH` is the one the web picker offers, and it was missing.
 STATE_CODES: dict[str, str] = {
     "JK": "01", "HP": "02", "PB": "03", "CH": "04", "UT": "05", "UK": "05",
     "HR": "06", "DL": "07", "RJ": "08", "UP": "09", "BR": "10", "SK": "11",
     "AR": "12", "NL": "13", "MN": "14", "MZ": "15", "TR": "16", "ML": "17",
     "AS": "18", "WB": "19", "JH": "20", "OR": "21", "OD": "21", "CT": "22",
-    "CG": "22", "MP": "23", "GJ": "24", "DD": "26", "DN": "26", "MH": "27",
-    "KA": "29", "GA": "30", "LD": "31", "KL": "32", "TN": "33", "PY": "34",
-    "AN": "35", "TG": "36", "TS": "36", "AP": "37", "LA": "38",
+    "CG": "22", "MP": "23", "GJ": "24", "DD": "26", "DN": "26", "DH": "26",
+    "MH": "27", "KA": "29", "GA": "30", "LD": "31", "KL": "32", "TN": "33",
+    "PY": "34", "AN": "35", "TG": "36", "TS": "36", "AP": "37", "LA": "38",
 }
 
 
@@ -71,6 +81,46 @@ def gstin_prefix_for_state(state_code: str) -> str | None:
     starts lying.
     """
     return STATE_CODES.get(state_code.strip().upper())
+
+
+def gstin_check_digit(first_fourteen: str) -> str | None:
+    """The fifteenth character of a GSTIN, computed from the first fourteen.
+
+    GSTIN carries a mod-36 checksum, which makes it one of the few identifiers
+    in the system that can be verified outright rather than merely looked
+    plausible. Weights alternate 1, 2 across the payload; each product is
+    folded by quotient plus remainder over 36.
+    """
+    payload = first_fourteen.upper()
+    if len(payload) != 14 or any(c not in _GSTIN_ALPHABET for c in payload):
+        return None
+    total = 0
+    for i, ch in enumerate(payload):
+        product = _GSTIN_ALPHABET.index(ch) * (1 if i % 2 == 0 else 2)
+        total += product // 36 + product % 36
+    return _GSTIN_ALPHABET[(36 - total % 36) % 36]
+
+
+def gstin_is_valid(gstin: str) -> bool:
+    code = (gstin or "").strip().upper()
+    if not GSTIN_SHAPE.match(code):
+        return False
+    return gstin_check_digit(code[:14]) == code[14]
+
+
+def gstin_state_matches(gstin: str, state_code: str) -> bool | None:
+    """Do a GSTIN's opening two digits agree with a two-letter state code?
+
+    None when there is nothing to compare — a blank GSTIN, or a state this
+    system does not recognise. The caller must read that as "unknown" and not
+    as disagreement: refusing a record because a lookup table is incomplete
+    would be the validator inventing a finding.
+    """
+    code = (gstin or "").strip().upper()
+    expected = gstin_prefix_for_state(state_code or "")
+    if not code or expected is None:
+        return None
+    return code[:2] == expected
 
 
 def compute_line_tax(

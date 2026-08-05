@@ -139,3 +139,68 @@ def test_pagination_below_the_floor_names_the_parameter(client, admin, query, fi
 
     assert response.status_code == 422
     assert field in {e["field"] for e in response.json()["errors"]}
+
+
+# --- a registration edited one field at a time -------------------------------
+
+
+def _gujarat_branch(client, admin) -> dict:
+    """The seeded branch in a different state from every other one."""
+    resp = client.get("/api/v1/warehouses", headers=admin)
+    resp.raise_for_status()
+    branch = next(
+        (w for w in resp.json() if w["code"] == "BR-AHM"),
+        None,
+    )
+    if branch is None:
+        pytest.skip("the seeded Gujarat branch is not in this database")
+    return branch
+
+
+def test_a_patch_cannot_slip_another_states_registration_onto_a_branch(
+    client, admin
+):
+    """The schema cannot catch this one, and the route has to.
+
+    A GSTIN must open with its own state's numeric code. `WarehouseUpdate`
+    compares the two only when both arrive together — and pasting head office's
+    registration onto a branch is a *one field* edit, so the check it would
+    have failed was never reached. The row's own state was in the database the
+    whole time; the route reads it.
+
+    Left unguarded this is invisible until an invoice prints: the document
+    would carry "State: GJ (24)" beside a GSTIN opening 27, and the buyer's
+    input credit is refused on it.
+    """
+    branch = _gujarat_branch(client, admin)
+    assert branch["state_code"] == "GJ"
+    before = branch["gstin"]
+
+    response = client.patch(
+        f"/api/v1/warehouses/{branch['id']}",
+        headers=admin,
+        json={"gstin": "27AABCS9876P1ZA"},  # valid, and Maharashtra's
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "starting 24" in body["detail"]
+    assert [e["field"] for e in body["errors"]] == ["gstin"]
+    # And nothing was written on the way to refusing.
+    after = client.get("/api/v1/warehouses", headers=admin).json()
+    assert next(w for w in after if w["id"] == branch["id"])["gstin"] == before
+
+
+def test_the_branchs_own_registration_is_still_editable(client, admin):
+    """The guard must not make the field unusable — re-sending the number the
+    branch already has is an ordinary, legal edit."""
+    branch = _gujarat_branch(client, admin)
+
+    response = client.patch(
+        f"/api/v1/warehouses/{branch['id']}",
+        headers=admin,
+        json={"gstin": branch["gstin"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["gstin"] == branch["gstin"]

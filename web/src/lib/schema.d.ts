@@ -4598,6 +4598,7 @@ export interface components {
          * @example {
          *       "address": "Ghodbunder Road, Thane West 400607",
          *       "code": "BR-THN",
+         *       "gstin": "27AABCS9876P1ZA",
          *       "is_central": false,
          *       "name": "Thane Branch",
          *       "state_code": "MH"
@@ -4615,6 +4616,8 @@ export interface components {
             is_central: boolean;
             /** State Code */
             state_code: string;
+            /** Gstin */
+            gstin?: string | null;
             /** Address */
             address?: string | null;
             /**
@@ -4635,6 +4638,8 @@ export interface components {
             is_central: boolean;
             /** State Code */
             state_code: string;
+            /** Gstin */
+            gstin?: string | null;
             /** Address */
             address?: string | null;
             /** Is Active */
@@ -4654,6 +4659,8 @@ export interface components {
             is_central?: boolean | null;
             /** State Code */
             state_code?: string | null;
+            /** Gstin */
+            gstin?: string | null;
             /** Address */
             address?: string | null;
             /** Is Active */
