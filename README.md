@@ -37,21 +37,67 @@ app on the server are the same app with the same rows in it.
 cp .env.example .env && docker compose up
 ```
 
+Then open **http://localhost:8080** and sign in as `admin@pharmacy.co.in` with
+the password **`ChangeMe@123`** (that is what `.env.example` sets; change
+`SEED_PASSWORD` and re-seed to use your own).
+
+**Docker is the only prerequisite** — no Python, no Node, no Postgres. It works
+the same on macOS, Windows and Linux, and it is the recommended path on
+Windows, where the native instructions below do not apply. On Windows use
+[Docker Desktop](https://docs.docker.com/desktop/install/windows-install/) and
+run the command in PowerShell (use two commands if `&&` gives you trouble).
+
 Postgres, the API and Caddy, built and wired the way production is. The first
 start migrates and seeds (~1 min); later starts reuse the volume and are
 instant. This is the closest thing to the live site you can run, and if you
 are checking whether something behaves the way it will on the server, check it
-here. Serves on http://localhost:8080.
+here.
+
+To wipe the data and start over: `docker compose down -v && docker compose up`.
 
 ### Or natively, for a faster edit loop
 
+macOS and Linux only — this path uses a bash script and a local Postgres
+build. On Windows, use Docker above.
+
 Nothing installs globally. Postgres runs as a project-local cluster on port **55432**
-with its data in `api/.pgdata`; Python lives in `api/.venv`. All three are gitignored.
+with its data in `api/.pgdata`; Python lives in `api/.venv`. All three are gitignored,
+which is why the first three commands below exist: a fresh clone has none of them.
+
+Prerequisites: Python 3.14, Node 22, and PostgreSQL 16
+(`brew install postgresql@16`).
+
+**0 — first time only**
+
+```bash
+python3 -m venv api/.venv && api/.venv/bin/pip install -r api/requirements.txt
+```
+
+```bash
+npm install --prefix web
+```
+
+```bash
+cp api/.env.example api/.env
+```
+
+That one matters: it points the API and Alembic at the project-local cluster on
+port 55432. Without it they both try the default 5432, find nothing, and fail
+with a connection error that looks like Postgres is down when it is simply
+somewhere else. (The `.env` in the repository root is a separate file, read by
+Docker Compose only.)
+
+```bash
+./scripts/db.sh init
+```
+
+`init` creates the cluster, starts it and adds the `pharmacy` database. Later
+sessions just need `./scripts/db.sh start`.
 
 **1 — database**
 
 ```bash
-./scripts/db.sh start && cd api && .venv/bin/alembic upgrade head && SEED_PASSWORD='pick-something-here' .venv/bin/python -m app.seed.demo
+./scripts/db.sh start && cd api && .venv/bin/alembic upgrade head && SEED_PASSWORD='ChangeMe@123' .venv/bin/python -m app.seed.demo
 ```
 
 **2 — API** (http://127.0.0.1:8000, docs at `/docs`)
