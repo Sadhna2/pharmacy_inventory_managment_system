@@ -124,6 +124,14 @@ sessions just need `./scripts/db.sh start`.
 cd api && .venv/bin/uvicorn app.main:app --port 8000
 ```
 
+`/docs` is grouped by the same sections as the product's sidebar, and every
+endpoint ends with a **Used by** line naming the screen that calls it and what
+it computes — so the API can be read as a description of the product rather
+than a list of paths. That mapping lives in
+[`api/app/core/api_docs.py`](api/app/core/api_docs.py) and is checked by
+`tests/test_api_docs.py`, which fails the build if an endpoint is added without
+one, or if an entry describes a route that no longer exists.
+
 **3 — web** (http://localhost:5173, proxies `/api` to the backend)
 
 ```bash
@@ -352,6 +360,7 @@ api/     FastAPI + SQLAlchemy 2.x + Alembic. app/services/ledger.py is the only 
   fixtures/     Six invoices and their recorded readings, for a demo with no network.
   app/seed/     bootstrap.py (demo fixture) and history.py (2 years of synthetic trading).
   app/core/     tunables.py declares every setting once; the API and UI both render from it.
+                api_docs.py maps every endpoint to the screen that calls it, for /docs.
 web/     React 19 + Vite + Tailwind v4 + TanStack Query.
 bench/   OCR benchmark harness — 50 generated distributor invoices and a scorer.
 docs/    SRS, architecture, ER diagram, project report, slides (.md and .pptx),

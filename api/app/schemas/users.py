@@ -63,6 +63,10 @@ class UserUpdate(BaseModel):
     at. Retire the account and create a new one instead.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"role_id": 3, "warehouse_id": 2}}
+    )
+
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
     role_id: int | None = None
     warehouse_id: int | None = None

@@ -10,7 +10,7 @@ this draft after a human has been through it.
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FlagOut(BaseModel):
@@ -129,6 +129,17 @@ class RememberAliasIn(BaseModel):
     `OMEZ-20` cannot be derived from `OMEPRAZOLE 20MG CAP` by any rule worth
     trusting, but it only has to be answered once.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "supplier_id": 3,
+                "product_id": 12,
+                "printed_name": "OMEZ-20 CAP 10'S",
+                "unit_cost": "38.50",
+            }
+        }
+    )
 
     supplier_id: int
     product_id: int

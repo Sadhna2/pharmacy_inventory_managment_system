@@ -11,7 +11,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live */
+        /**
+         * Live
+         * @description ---
+         *
+         *     **Used by:** Not used by the interface — Docker and the load balancer
+         *
+         *     Liveness: the process is up. Does not touch the database.
+         */
         get: operations["live_health_live_get"];
         put?: never;
         post?: never;
@@ -28,7 +35,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Ready */
+        /**
+         * Ready
+         * @description ---
+         *
+         *     **Used by:** Not used by the interface — Docker, CI and the deploy smoke test
+         *
+         *     Readiness: the process is up *and* the database answers. This is what `depends_on: service_healthy` and the post-deploy check wait on.
+         */
         get: operations["ready_health_ready_get"];
         put?: never;
         post?: never;
@@ -47,7 +61,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
+        /**
+         * Login
+         * @description ---
+         *
+         *     **Used by:** Login screen
+         *
+         *     Exchanges email and password for a short-lived access token and a refresh cookie. The only unauthenticated write in the system.
+         */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
@@ -64,7 +85,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Refresh */
+        /**
+         * Refresh
+         * @description ---
+         *
+         *     **Used by:** Every screen, in the background
+         *
+         *     Silently renews an expired access token from the refresh cookie. The browser retries the original request once this succeeds, so a session never expires mid-action.
+         */
         post: operations["refresh_api_v1_auth_refresh_post"];
         delete?: never;
         options?: never;
@@ -81,7 +109,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout */
+        /**
+         * Logout
+         * @description ---
+         *
+         *     **Used by:** Sidebar → Sign out
+         *
+         *     Revokes the refresh token server-side. Revocation is immediate rather than waiting for expiry.
+         */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -96,7 +131,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Me */
+        /**
+         * Me
+         * @description ---
+         *
+         *     **Used by:** Every screen, on load
+         *
+         *     The signed-in user with the resolved permission codes the interface uses to decide which controls exist at all.
+         */
         get: operations["me_api_v1_auth_me_get"];
         put?: never;
         post?: never;
@@ -115,7 +157,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Change Password */
+        /**
+         * Change Password
+         * @description ---
+         *
+         *     **Used by:** Account menu
+         *
+         *     Changes your own password; requires the current one.
+         */
         post: operations["change_password_api_v1_auth_change_password_post"];
         delete?: never;
         options?: never;
@@ -130,10 +179,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Products */
+        /**
+         * List Products
+         * @description ---
+         *
+         *     **Used by:** Inventory → Products; product pickers in every form
+         *
+         *     Paginated catalogue with search, category, schedule and storage filters. `include_retired` brings back withdrawn lines.
+         */
         get: operations["list_products_api_v1_products_get"];
         put?: never;
-        /** Create Product */
+        /**
+         * Create Product
+         * @description ---
+         *
+         *     **Used by:** Inventory → Products → New product
+         *
+         *     Creates a catalogue entry. Also reachable from a scanned invoice line the catalogue could not resolve.
+         */
         post: operations["create_product_api_v1_products_post"];
         delete?: never;
         options?: never;
@@ -148,18 +211,38 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Product */
+        /**
+         * Get Product
+         * @description ---
+         *
+         *     **Used by:** Inventory → Products → row
+         *
+         *     One product with its suppliers, batches on hand and reorder settings.
+         */
         get: operations["get_product_api_v1_products__product_id__get"];
         put?: never;
         post?: never;
         /**
          * Deactivate Product
          * @description Soft delete. Products are never removed — history references them.
+         *
+         *     ---
+         *
+         *     **Used by:** Inventory → Products → Retire
+         *
+         *     Retires rather than deletes. A product referenced by history cannot be removed without breaking the ledger's foreign keys.
          */
         delete: operations["deactivate_product_api_v1_products__product_id__delete"];
         options?: never;
         head?: never;
-        /** Update Product */
+        /**
+         * Update Product
+         * @description ---
+         *
+         *     **Used by:** Inventory → Products → Edit
+         *
+         *     Partial update. Changing GST rate or HSN affects future documents only — posted tax is never recomputed.
+         */
         patch: operations["update_product_api_v1_products__product_id__patch"];
         trace?: never;
     };
@@ -170,10 +253,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Categories */
+        /**
+         * List Categories
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Categories; product form
+         *
+         *     The therapeutic category tree. Categories are hierarchical, so a product inherits its parent's grouping in reporting.
+         */
         get: operations["list_categories_api_v1_categories_get"];
         put?: never;
-        /** Create Category */
+        /**
+         * Create Category
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → New category
+         *
+         *     Creates a category, optionally under an existing parent.
+         */
         post: operations["create_category_api_v1_categories_post"];
         delete?: never;
         options?: never;
@@ -191,11 +288,25 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire Category */
+        /**
+         * Retire Category
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Retire category
+         *
+         *     Retires rather than deletes, and refuses while active sub-categories or products still point at it — reclassify those first, so nothing is left filed under a heading that no longer appears.
+         */
         delete: operations["retire_category_api_v1_categories__category_id__delete"];
         options?: never;
         head?: never;
-        /** Update Category */
+        /**
+         * Update Category
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Edit category
+         *
+         *     Renames a category or moves it under a different parent. The new parent chain is walked to the root first, so a move that would make a category its own ancestor is refused rather than producing a tree that no longer terminates.
+         */
         patch: operations["update_category_api_v1_categories__category_id__patch"];
         trace?: never;
     };
@@ -206,7 +317,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Uoms */
+        /**
+         * List Uoms
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Units; product form
+         *
+         *     Units of measure — strip, box, vial, bottle. Every quantity in the ledger is counted in the product's own unit; nothing is converted behind your back.
+         */
         get: operations["list_uoms_api_v1_uoms_get"];
         put?: never;
         /**
@@ -216,6 +334,12 @@ export interface paths {
          *     A UOM is the meaning of every quantity ever recorded against it. Renaming
          *     STRIP to BOX would silently reinterpret years of ledger rows, and there is
          *     no `is_active` column to retire one with. Adding is safe; changing is not.
+         *
+         *     ---
+         *
+         *     **Used by:** Setup → Master data → New unit
+         *
+         *     Creates a unit of measure with its short code and display name.
          */
         post: operations["create_uom_api_v1_uoms_post"];
         delete?: never;
@@ -231,10 +355,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Warehouses */
+        /**
+         * List Warehouses
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Locations; location pickers everywhere
+         *
+         *     The central warehouse and branches. Each carries a state code, which drives the GST split, and branch users are scoped to exactly one.
+         */
         get: operations["list_warehouses_api_v1_warehouses_get"];
         put?: never;
-        /** Create Warehouse */
+        /**
+         * Create Warehouse
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → New location
+         *
+         *     Creates a branch or warehouse. Its state code decides IGST versus CGST+SGST for everything received into it.
+         */
         post: operations["create_warehouse_api_v1_warehouses_post"];
         delete?: never;
         options?: never;
@@ -252,11 +390,25 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire Warehouse */
+        /**
+         * Retire Warehouse
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Retire location
+         *
+         *     Retires rather than deletes, and refuses while the location still holds stock. Retiring an occupied branch would strand its units — gone from every picker, still counted in every total.
+         */
         delete: operations["retire_warehouse_api_v1_warehouses__warehouse_id__delete"];
         options?: never;
         head?: never;
-        /** Update Warehouse */
+        /**
+         * Update Warehouse
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Edit location
+         *
+         *     Partial update of name, address or state code.
+         */
         patch: operations["update_warehouse_api_v1_warehouses__warehouse_id__patch"];
         trace?: never;
     };
@@ -267,10 +419,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Bins */
+        /**
+         * List Bins
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Locations → Bins
+         *
+         *     Shelf and fridge positions within a location, flagged for cold chain and quarantine — the flags are what let a recall or a QC hold move stock somewhere it cannot be picked from.
+         */
         get: operations["list_bins_api_v1_warehouses__warehouse_id__bins_get"];
         put?: never;
-        /** Create Bin */
+        /**
+         * Create Bin
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Locations → Add bin
+         *
+         *     Creates a bin under this location, with its cold-chain and quarantine flags.
+         */
         post: operations["create_bin_api_v1_warehouses__warehouse_id__bins_post"];
         delete?: never;
         options?: never;
@@ -288,11 +454,25 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire Bin */
+        /**
+         * Retire Bin
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Remove bin
+         *
+         *     Retires a bin. Refused while stock still sits in it.
+         */
         delete: operations["retire_bin_api_v1_bins__bin_id__delete"];
         options?: never;
         head?: never;
-        /** Update Bin */
+        /**
+         * Update Bin
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Edit bin
+         *
+         *     Partial update. Designating an occupied bin cold-chain is refused — flipping the flag under existing stock would retroactively claim ambient stock had been refrigerated all along. Empty it first.
+         */
         patch: operations["update_bin_api_v1_bins__bin_id__patch"];
         trace?: never;
     };
@@ -303,10 +483,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Suppliers */
+        /**
+         * List Suppliers
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Distributors; pickers in Purchasing
+         *
+         *     Distributors with GSTIN and state code — the state code is what decides IGST versus CGST+SGST on every order.
+         */
         get: operations["list_suppliers_api_v1_suppliers_get"];
         put?: never;
-        /** Create Supplier */
+        /**
+         * Create Supplier
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → New distributor
+         *
+         *     Creates a distributor. The state code entered here is what every future order from this supplier uses to decide its GST split, so it is the one field worth double-checking. (GSTIN is length-checked only — the mod-36 check-character test runs in invoice intake, where the number is being read by a machine rather than typed by a person.)
+         */
         post: operations["create_supplier_api_v1_suppliers_post"];
         delete?: never;
         options?: never;
@@ -324,11 +518,25 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire Supplier */
+        /**
+         * Retire Supplier
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Retire distributor
+         *
+         *     Retires rather than deletes: a distributor named on past orders cannot be removed without orphaning that history.
+         */
         delete: operations["retire_supplier_api_v1_suppliers__supplier_id__delete"];
         options?: never;
         head?: never;
-        /** Update Supplier */
+        /**
+         * Update Supplier
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Edit distributor
+         *
+         *     Partial update. Changing the state code affects new orders only — tax already posted is never recomputed.
+         */
         patch: operations["update_supplier_api_v1_suppliers__supplier_id__patch"];
         trace?: never;
     };
@@ -339,10 +547,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Customers */
+        /**
+         * List Customers
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Customers; picker in Sales
+         *
+         *     Institutional buyers — hospitals and clinics — with the GSTIN and state code that decide the GST split on their orders.
+         */
         get: operations["list_customers_api_v1_customers_get"];
         put?: never;
-        /** Create Customer */
+        /**
+         * Create Customer
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → New customer
+         *
+         *     Creates a customer. GSTIN is optional, since not every institutional buyer is registered; the state code is not, because the GST split on their orders depends on it.
+         */
         post: operations["create_customer_api_v1_customers_post"];
         delete?: never;
         options?: never;
@@ -360,11 +582,25 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire Customer */
+        /**
+         * Retire Customer
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Retire customer
+         *
+         *     Retires rather than deletes, so shipment history — the record a recall traces — stays intact.
+         */
         delete: operations["retire_customer_api_v1_customers__customer_id__delete"];
         options?: never;
         head?: never;
-        /** Update Customer */
+        /**
+         * Update Customer
+         * @description ---
+         *
+         *     **Used by:** Setup → Master data → Edit customer
+         *
+         *     Partial update of name, contact details, GSTIN or state code.
+         */
         patch: operations["update_customer_api_v1_customers__customer_id__patch"];
         trace?: never;
     };
@@ -382,6 +618,12 @@ export interface paths {
          *     "Where is batch PAR240815?" during a recall, and "what expires this
          *     quarter?" when deciding what to push. Both were previously a scroll
          *     through every page.
+         *
+         *     ---
+         *
+         *     **Used by:** Inventory → Stock; batch pickers in Transfers and Adjustments
+         *
+         *     On-hand quantity at the full grain — product, warehouse, bin, batch, status — with each batch's own expiry and printed MRP. A projection of the ledger, rebuildable from it at any time.
          */
         get: operations["list_balances_api_v1_stock_balances_get"];
         put?: never;
@@ -399,10 +641,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Movements */
+        /**
+         * List Movements
+         * @description ---
+         *
+         *     **Used by:** Inventory → Movements
+         *
+         *     The append-only ledger itself, newest first, filterable by product, warehouse, type and date. Every quantity anywhere in the product is derived from these rows.
+         */
         get: operations["list_movements_api_v1_stock_movements_get"];
         put?: never;
-        /** Create Movement */
+        /**
+         * Create Movement
+         * @description ---
+         *
+         *     **Used by:** Inventory → Movements → New movement
+         *
+         *     Posts a single ledger entry. Refuses anything that would drive a batch negative, and takes a row lock so concurrent postings against one batch serialise.
+         */
         post: operations["create_movement_api_v1_stock_movements_post"];
         delete?: never;
         options?: never;
@@ -422,6 +678,12 @@ export interface paths {
         /**
          * Reverse Movement
          * @description The only way to undo a movement. The original stays in the ledger.
+         *
+         *     ---
+         *
+         *     **Used by:** Inventory → Movements → Reverse
+         *
+         *     Writes an equal and opposite entry. The original row is never deleted or edited — the database rejects both — so the mistake and its correction both stay on the record.
          */
         post: operations["reverse_movement_api_v1_stock_movements__movement_id__reverse_post"];
         delete?: never;
@@ -440,6 +702,12 @@ export interface paths {
         /**
          * Expiring Stock
          * @description Batches expiring within `days`. Pass days=0 for already-expired stock.
+         *
+         *     ---
+         *
+         *     **Used by:** Overview → Dashboard, and Inventory → Stock (expiry filter)
+         *
+         *     Batches by remaining shelf life, bucketed into expired / this month / next 90 days. Drives the expiry warning tile.
          */
         get: operations["expiring_stock_api_v1_stock_expiring_get"];
         put?: never;
@@ -457,7 +725,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Stock Summary */
+        /**
+         * Stock Summary
+         * @description ---
+         *
+         *     **Used by:** Overview → Dashboard
+         *
+         *     The headline tiles: total stock value at cost, distinct products held, and counts by stock status. Computed from the balance projection, never stored.
+         */
         get: operations["stock_summary_api_v1_stock_summary_get"];
         put?: never;
         post?: never;
@@ -474,10 +749,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Lots */
+        /**
+         * List Lots
+         * @description ---
+         *
+         *     **Used by:** Compliance → Batch Recalls (batch picker); Inventory → Stock
+         *
+         *     Batches with their expiry, supplier and printed MRP. MRP is stored per batch because it is a legal ceiling printed on the pack — a price rise on a new carton must not reprice older stock.
+         */
         get: operations["list_lots_api_v1_lots_get"];
         put?: never;
-        /** Create Lot */
+        /**
+         * Create Lot
+         * @description ---
+         *
+         *     **Used by:** Created by goods receipt; exposed for corrections
+         *
+         *     Registers a batch. Normally created as a side effect of receiving.
+         */
         post: operations["create_lot_api_v1_lots_post"];
         delete?: never;
         options?: never;
@@ -492,10 +781,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Purchase Orders */
+        /**
+         * List Purchase Orders
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing
+         *
+         *     Orders to distributors with received-vs-ordered quantities per line, so 'partially received' carries the arithmetic behind it.
+         */
         get: operations["list_purchase_orders_api_v1_purchase_orders_get"];
         put?: never;
-        /** Create Purchase Order */
+        /**
+         * Create Purchase Order
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing → New order
+         *
+         *     Raises a DRAFT order. GST treatment — IGST versus CGST+SGST — is derived from the supplier's and the warehouse's state codes, not entered by the user.
+         */
         post: operations["create_purchase_order_api_v1_purchase_orders_post"];
         delete?: never;
         options?: never;
@@ -510,7 +813,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Purchase Order */
+        /**
+         * Get Purchase Order
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing → row; Receive goods
+         *
+         *     One order with its lines, used to prefill a goods receipt with what the delivery is expected to contain.
+         */
         get: operations["get_purchase_order_api_v1_purchase_orders__po_id__get"];
         put?: never;
         post?: never;
@@ -529,7 +839,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit Po */
+        /**
+         * Submit Po
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing → Submit
+         *
+         *     Moves a DRAFT to PENDING_APPROVAL.
+         */
         post: operations["submit_po_api_v1_purchase_orders__po_id__submit_post"];
         delete?: never;
         options?: never;
@@ -546,7 +863,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve Po */
+        /**
+         * Approve Po
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing → Approve
+         *
+         *     Authorises the order. Refuses when the approver is the creator — the check is on identity, so an administrator cannot bypass it either.
+         */
         post: operations["approve_po_api_v1_purchase_orders__po_id__approve_post"];
         delete?: never;
         options?: never;
@@ -563,7 +887,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel Po */
+        /**
+         * Cancel Po
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing → Cancel
+         *
+         *     Marks the order CANCELLED. Refused once it is fully received, or already cancelled. A partially-received order can still be cancelled — that is the ordinary case of a distributor short-shipping and the remainder never coming.
+         */
         post: operations["cancel_po_api_v1_purchase_orders__po_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -578,12 +909,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Receipts */
+        /**
+         * List Receipts
+         * @description ---
+         *
+         *     **Used by:** Operations → Purchasing → Receive goods
+         *
+         *     Past receipts, with the supplier invoice number each was booked against.
+         */
         get: operations["list_receipts_api_v1_goods_receipts_get"];
         put?: never;
         /**
          * Receive Goods
          * @description The moment stock increases.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → Receive goods → Receive into stock
+         *
+         *     The only way inbound stock is created. Creates batches, posts ledger entries and advances each line's received quantity, closing the order to RECEIVED or PARTIALLY_RECEIVED from the arithmetic rather than from a flag. Receiving into a warehouse the order was not for is refused — that is nearly always the wrong order picked from the list, and it would book stock to a branch that never saw it while closing an order that was never delivered. A genuine redirection is the per-line `cross_dock_warehouse_id` instead. Per line, `quarantine` lands the stock in QUARANTINE rather than AVAILABLE — used for Schedule H1/X and cold-chain goods pending a check.
          */
         post: operations["receive_goods_api_v1_goods_receipts_post"];
         delete?: never;
@@ -599,10 +943,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Sales Orders */
+        /**
+         * List Sales Orders
+         * @description ---
+         *
+         *     **Used by:** Operations → Sales
+         *
+         *     Customer orders with allocation and shipment status.
+         */
         get: operations["list_sales_orders_api_v1_sales_orders_get"];
         put?: never;
-        /** Create Sales Order */
+        /**
+         * Create Sales Order
+         * @description ---
+         *
+         *     **Used by:** Operations → Sales → New order
+         *
+         *     Raises an order. Nothing leaves stock yet — allocation is a separate, deliberate step.
+         */
         post: operations["create_sales_order_api_v1_sales_orders_post"];
         delete?: never;
         options?: never;
@@ -617,7 +975,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Sales Order */
+        /**
+         * Get Sales Order
+         * @description ---
+         *
+         *     **Used by:** Operations → Sales → row
+         *
+         *     One order with its lines, allocations and shipments.
+         */
         get: operations["get_sales_order_api_v1_sales_orders__so_id__get"];
         put?: never;
         post?: never;
@@ -641,6 +1006,12 @@ export interface paths {
          * @description Reserve stock, choosing batches by FEFO.
          *
          *     The response tells the picker exactly which batch to take off the shelf.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → Allocate
+         *
+         *     Reserves batches **FEFO** — earliest expiry first — for expiry-tracked products, FIFO by receipt date for everything else, and skips anything inside the minimum shelf-life floor so stock too close to expiry is never sent to a customer. Takes `FOR UPDATE` row locks, so two people allocating the same batch at once serialise instead of both being told it is available.
          */
         post: operations["allocate_order_api_v1_sales_orders__so_id__allocate_post"];
         delete?: never;
@@ -661,6 +1032,12 @@ export interface paths {
         /**
          * Ship Order
          * @description The moment stock decreases. Records lot -> customer for recall tracing.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → Ship
+         *
+         *     Consumes the reservations and posts the outbound ledger entries, recording which batch actually went to which customer — the record a recall later traces.
          */
         post: operations["ship_order_api_v1_sales_orders__so_id__ship_post"];
         delete?: never;
@@ -678,7 +1055,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel Sales Order */
+        /**
+         * Cancel Sales Order
+         * @description ---
+         *
+         *     **Used by:** Operations → Sales → Cancel
+         *
+         *     Releases any active reservations back to available stock.
+         */
         post: operations["cancel_sales_order_api_v1_sales_orders__so_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -693,10 +1077,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Transfers */
+        /**
+         * List Transfers
+         * @description ---
+         *
+         *     **Used by:** Operations → Transfers
+         *
+         *     Branch-to-branch movements, including what is currently in transit.
+         */
         get: operations["list_transfers_api_v1_transfers_get"];
         put?: never;
-        /** Create Transfer */
+        /**
+         * Create Transfer
+         * @description ---
+         *
+         *     **Used by:** Operations → Transfers → New transfer
+         *
+         *     Raises a DRAFT transfer between two locations.
+         */
         post: operations["create_transfer_api_v1_transfers_post"];
         delete?: never;
         options?: never;
@@ -713,7 +1111,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve Transfer */
+        /**
+         * Approve Transfer
+         * @description ---
+         *
+         *     **Used by:** Operations → Transfers → Approve
+         *
+         *     Moves the transfer to APPROVED, which dispatch then requires. Note that unlike purchase orders and adjustments, this does **not** currently refuse self-approval — a transfer moves stock between two of your own branches rather than out of the business, so nothing is lost if one person does both, but it is an inconsistency worth knowing about rather than assuming.
+         */
         post: operations["approve_transfer_api_v1_transfers__transfer_id__approve_post"];
         delete?: never;
         options?: never;
@@ -733,6 +1138,12 @@ export interface paths {
         /**
          * Dispatch Transfer
          * @description Stock leaves the source and becomes IN_TRANSIT at the destination.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Transfers → Dispatch
+         *
+         *     Posts stock out of the source into IN_TRANSIT. Deliberately two postings rather than one, so units are never invented at the destination nor lost in the gap.
          */
         post: operations["dispatch_transfer_api_v1_transfers__transfer_id__dispatch_post"];
         delete?: never;
@@ -753,6 +1164,12 @@ export interface paths {
         /**
          * Receive Transfer
          * @description IN_TRANSIT becomes AVAILABLE at the destination.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Transfers → Receive
+         *
+         *     Lands the in-transit stock at the destination, preserving each batch's identity and expiry across the move.
          */
         post: operations["receive_transfer_api_v1_transfers__transfer_id__receive_post"];
         delete?: never;
@@ -768,12 +1185,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Adjustments */
+        /**
+         * List Adjustments
+         * @description ---
+         *
+         *     **Used by:** Operations → Adjustments
+         *
+         *     Stock corrections — counts, damage, write-offs — and their approval state.
+         */
         get: operations["list_adjustments_api_v1_adjustments_get"];
         put?: never;
         /**
          * Create Adjustment
          * @description Raises an adjustment for approval. Nothing posts until approved.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Adjustments → New adjustment
+         *
+         *     Raises a correction for approval. Nothing moves until a second person signs it off.
          */
         post: operations["create_adjustment_api_v1_adjustments_post"];
         delete?: never;
@@ -794,6 +1224,12 @@ export interface paths {
         /**
          * Approve Adjustment
          * @description Approval is what posts to the ledger. The raiser cannot approve.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Adjustments → Approve
+         *
+         *     Approves and posts the ledger entries. Refuses self-approval.
          */
         post: operations["approve_adjustment_api_v1_adjustments__adjustment_id__approve_post"];
         delete?: never;
@@ -809,12 +1245,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Recalls */
+        /**
+         * List Recalls
+         * @description ---
+         *
+         *     **Used by:** Compliance → Batch Recalls
+         *
+         *     Open and closed recalls with their current status.
+         */
         get: operations["list_recalls_api_v1_recalls_get"];
         put?: never;
         /**
          * Initiate Recall
          * @description Freeze a batch chain-wide and trace who already received it.
+         *
+         *     ---
+         *
+         *     **Used by:** Compliance → Batch Recalls → Start recall
+         *
+         *     Freezes every unit of a batch into quarantine at every location at once. Short to implement because the ledger is batch-aware — this is a query over existing rows, not a new subsystem.
          */
         post: operations["initiate_recall_api_v1_recalls_post"];
         delete?: never;
@@ -830,7 +1279,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Recall Impact */
+        /**
+         * Recall Impact
+         * @description ---
+         *
+         *     **Used by:** Compliance → Batch Recalls → row
+         *
+         *     Full traceability for the batch: every movement of it, every branch holding it, and every customer who already received some.
+         */
         get: operations["recall_impact_api_v1_recalls__recall_id__impact_get"];
         put?: never;
         post?: never;
@@ -852,6 +1308,12 @@ export interface paths {
         /**
          * Close Recall
          * @description Scrap the quarantined stock and close the recall.
+         *
+         *     ---
+         *
+         *     **Used by:** Compliance → Batch Recalls → Close
+         *
+         *     Closes the recall. The trace stays in the audit log.
          */
         post: operations["close_recall_api_v1_recalls__recall_id__close_post"];
         delete?: never;
@@ -873,6 +1335,12 @@ export interface paths {
          *
          *     `entity_type` + `entity_id` together give the full history of one record —
          *     which is the question people actually ask.
+         *
+         *     ---
+         *
+         *     **Used by:** Compliance → Audit trail
+         *
+         *     Every mutation with actor, action, entity and the before/after values. Append-only, enforced by the same database trigger that protects the ledger.
          */
         get: operations["list_audit_api_v1_audit_get"];
         put?: never;
@@ -896,6 +1364,12 @@ export interface paths {
          *
          *     Derived rather than hardcoded, so a filter list cannot drift out of date
          *     as Layer 2 adds new audited actions.
+         *
+         *     ---
+         *
+         *     **Used by:** Compliance → Audit trail (filters)
+         *
+         *     The distinct actors, actions and entity types present, so the filters offer only values that exist.
          */
         get: operations["audit_facets_api_v1_audit_facets_get"];
         put?: never;
@@ -913,10 +1387,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Users */
+        /**
+         * List Users
+         * @description ---
+         *
+         *     **Used by:** Setup → Users
+         *
+         *     Staff accounts with their role and branch scope.
+         */
         get: operations["list_users_api_v1_users_get"];
         put?: never;
-        /** Create User */
+        /**
+         * Create User
+         * @description ---
+         *
+         *     **Used by:** Setup → Users → New user
+         *
+         *     Creates an account. A branch scope of null means every branch.
+         */
         post: operations["create_user_api_v1_users_post"];
         delete?: never;
         options?: never;
@@ -937,7 +1425,14 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update User */
+        /**
+         * Update User
+         * @description ---
+         *
+         *     **Used by:** Setup → Users → Edit
+         *
+         *     Changes role, branch scope or active state.
+         */
         patch: operations["update_user_api_v1_users__user_id__patch"];
         trace?: never;
     };
@@ -957,6 +1452,12 @@ export interface paths {
          *     Every refresh token the account holds is revoked, so a session opened with
          *     the old password — including one an attacker already had — dies with it.
          *     Users changing their own password use /auth/password instead.
+         *
+         *     ---
+         *
+         *     **Used by:** Setup → Users → Reset password
+         *
+         *     Administrator reset, for the 'I am locked out' call. Does not require the current password, and is audited.
          */
         post: operations["reset_password_api_v1_users__user_id__password_post"];
         delete?: never;
@@ -978,6 +1479,12 @@ export interface paths {
          *
          *     Fetched once by the user form so the admin sees what a role actually grants
          *     before assigning it, rather than inferring it from the name.
+         *
+         *     ---
+         *
+         *     **Used by:** Setup → Users (role picker)
+         *
+         *     The four fixed roles and the permissions each carries.
          */
         get: operations["list_roles_api_v1_roles_get"];
         put?: never;
@@ -1002,6 +1509,12 @@ export interface paths {
          *     Each tunable carries its own label, help text, type and bounds, so adding
          *     one to the registry puts a correctly validated field on the page with no
          *     frontend change at all.
+         *
+         *     ---
+         *
+         *     **Used by:** Setup → Settings
+         *
+         *     Every tunable threshold — anomaly sensitivity, forecast horizon, service level — with its default, current value and allowed range, declared once in `app/core/tunables.py` and rendered by both the API and the interface.
          */
         get: operations["read_settings_api_v1_settings_get"];
         put?: never;
@@ -1018,6 +1531,12 @@ export interface paths {
          *     cross-field rules can reject a combination that each field would accept on
          *     its own. The client should render what the server actually holds, not what
          *     it hoped it sent.
+         *
+         *     ---
+         *
+         *     **Used by:** Setup → Settings → Save
+         *
+         *     Applies a batch of changes and the per-capability on/off switches. Returns the whole snapshot, because setting a value back to its default deletes the override. Every change is audited with its before and after.
          */
         patch: operations["update_settings_api_v1_settings_patch"];
         trace?: never;
@@ -1037,6 +1556,12 @@ export interface paths {
          *
          *     Feature switches are left alone — "reset the numbers" should not silently
          *     turn a capability back on that somebody deliberately switched off.
+         *
+         *     ---
+         *
+         *     **Used by:** Setup → Settings → Reset to defaults
+         *
+         *     Deletes every stored override, so each tunable falls back to the default declared in `app/core/tunables.py`. Audited like any other settings change.
          */
         post: operations["reset_settings_api_v1_settings_reset_post"];
         delete?: never;
@@ -1059,6 +1584,12 @@ export interface paths {
          *     The navigation needs this to avoid offering a screen that would 404. It is
          *     not a security boundary — every gated endpoint checks the same switch
          *     itself — so it needs no more than authentication.
+         *
+         *     ---
+         *
+         *     **Used by:** Every screen, for the sidebar
+         *
+         *     Which capabilities are live, so the navigation does not offer a screen that would 404. Not a security boundary — each gated endpoint checks the same switch itself.
          */
         get: operations["read_features_api_v1_settings_features_get"];
         put?: never;
@@ -1079,6 +1610,12 @@ export interface paths {
         /**
          * List Lead Times
          * @description Every supplier with deliveries on record, slowest first.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Supplier lead times
+         *
+         *     Median, p90 and standard deviation of actual delivery time per distributor, measured from your own purchase orders and goods receipts, plus how often each meets the date it promised. Measured, never quoted. Gated on `features.leadtime`.
          */
         get: operations["list_lead_times_api_v1_ai_lead_times_get"];
         put?: never;
@@ -1102,6 +1639,12 @@ export interface paths {
          *
          *     The delivery list is the point. A percentile nobody can trace back to real
          *     orders is a number to argue with; one that lists the orders is evidence.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Supplier lead times → row
+         *
+         *     The orders and receipts a supplier's percentiles were computed from, because a buyer about to phone a distributor needs the order numbers, not a score.
          */
         get: operations["supplier_detail_api_v1_ai_lead_times__supplier_id__get"];
         put?: never;
@@ -1122,6 +1665,12 @@ export interface paths {
         /**
          * List Anomalies
          * @description Everything worth a second look, most serious first.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Exceptions
+         *
+         *     Threshold detection over the ledger: after-hours movements, shrinkage, damage clusters and count variances, each measured against that location's own normal rather than one global rule. Every finding links to the movements it was computed from. Sensitivity is an administrator setting. Gated on `features.anomaly`.
          */
         get: operations["list_anomalies_api_v1_ai_anomalies_get"];
         put?: never;
@@ -1142,6 +1691,12 @@ export interface paths {
         /**
          * List Forecasts
          * @description One forecast per product and location, busiest first.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Demand forecast
+         *
+         *     Holt-Winters exponential smoothing with level, trend and weekly seasonality, per product per branch over two years of ledger history. Every series is backtested against a seasonal-naive baseline and the winning method is named — a series that could not beat 'the same weekday last week' says so. Gated on `features.forecast`.
          */
         get: operations["list_forecasts_api_v1_ai_forecast_get"];
         put?: never;
@@ -1162,6 +1717,12 @@ export interface paths {
         /**
          * List Recommendations
          * @description What to order, most urgent first, with the orders it would become.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Replenishment
+         *
+         *     Reorder point = forecast demand over the lead time + safety stock, where safety stock is sized from both demand variance and the supplier's own lead-time variance. Each line returns its workings term by term, plus days of cover and a projected stockout date. Gated on `features.reorder`.
          */
         get: operations["list_recommendations_api_v1_ai_reorder_get"];
         put?: never;
@@ -1189,6 +1750,12 @@ export interface paths {
          *     date comes from the supplier's measured p90 rather than their quoted lead
          *     time, so the date on the order is one the goods have a 90% chance of
          *     beating instead of one the distributor put on a brochure.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Replenishment → Raise draft order
+         *
+         *     Turns selected recommendations into **DRAFT** purchase orders through the same service a human uses. It still needs a second person to approve — separation of duties is not waived because a machine suggested it. Later runs net the draft off, so the suggestion does not come back.
          */
         post: operations["raise_draft_order_api_v1_ai_reorder_orders_post"];
         delete?: never;
@@ -1209,6 +1776,12 @@ export interface paths {
         /**
          * Read Invoice
          * @description Read an invoice into a draft goods receipt. Creates nothing.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → Scan an invoice
+         *
+         *     **The generative AI feature.** Reads a photographed distributor invoice into a draft goods receipt. The model produces structured JSON only; every reading is then checked by deterministic code — quantity x rate against the line amount, lines against the subtotal, and the GSTIN's mod-36 check character — and each product is matched under the same strength and dosage-form rules an ordinary lookup obeys. **Creates nothing**: there is no code path from here to the ledger. Findings are graded BLOCK only where wrong stock could reach a shelf. Gated on `features.invoice_ocr` and `grn.create`.
          */
         post: operations["read_invoice_api_v1_ai_intake_invoice_post"];
         delete?: never;
@@ -1234,6 +1807,12 @@ export interface paths {
          *     later invoice from that distributor matches it exactly — which is why the
          *     unmatched rate falls to nothing after the first delivery rather than
          *     staying where it started.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → Scan an invoice → Remember this name
+         *
+         *     Records what a distributor calls one of our products, on `product_suppliers.supplier_sku`. Taught once, every later invoice from that distributor matches exactly — which is why the unmatched rate falls to near zero after a supplier's first delivery.
          */
         post: operations["remember_alias_api_v1_ai_intake_alias_post"];
         delete?: never;
@@ -1256,6 +1835,12 @@ export interface paths {
          *     Offered before the upload, because naming the order is what narrows product
          *     matching from the whole catalogue to a dozen lines — the difference between
          *     guessing and looking up.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → Scan an invoice (order picker)
+         *
+         *     Orders a delivery from this supplier could be against. Naming the order narrows product matching from the whole catalogue to a dozen lines — the difference between guessing and looking up.
          */
         get: operations["open_orders_api_v1_ai_intake_open_orders__supplier_id__get"];
         put?: never;
@@ -1620,6 +2205,10 @@ export interface components {
          * @description `code` is absent: stock rows point at a bin by id, but people find a
          *     location by the label on the shelf. Renaming it would make the two
          *     disagree with no way to tell which is right.
+         * @example {
+         *       "is_cold_chain": true,
+         *       "zone": "COLD-A"
+         *     }
          */
         BinUpdate: {
             /** Zone */
@@ -1686,7 +2275,12 @@ export interface components {
              */
             product_count: number;
         };
-        /** CategoryUpdate */
+        /**
+         * CategoryUpdate
+         * @example {
+         *       "parent_id": 4
+         *     }
+         */
         CategoryUpdate: {
             /** Name */
             name?: string | null;
@@ -1790,6 +2384,9 @@ export interface components {
         /**
          * CustomerUpdate
          * @description `code` is omitted on purpose — sales orders refer to it.
+         * @example {
+         *       "credit_limit": "250000.00"
+         *     }
          */
         CustomerUpdate: {
             /** Name */
@@ -2837,7 +3434,13 @@ export interface components {
             /** Qty Available */
             qty_available?: string | null;
         };
-        /** ProductUpdate */
+        /**
+         * ProductUpdate
+         * @example {
+         *       "reorder_point": "2830",
+         *       "safety_stock_days": 21
+         *     }
+         */
         ProductUpdate: {
             /** Name */
             name?: string | null;
@@ -2962,6 +3565,21 @@ export interface components {
          *     a buyer who edited a line gets what they approved. The server still prices
          *     the lines from the supplier record — a client that could set its own unit
          *     price could set it to zero.
+         * @example {
+         *       "lines": [
+         *         {
+         *           "product_id": 12,
+         *           "quantity": 2800
+         *         },
+         *         {
+         *           "product_id": 47,
+         *           "quantity": 600
+         *         }
+         *       ],
+         *       "notes": "Raised from the 12 Mar replenishment run.",
+         *       "supplier_id": 3,
+         *       "warehouse_id": 1
+         *     }
          */
         RaiseOrderIn: {
             /** Supplier Id */
@@ -3125,6 +3743,12 @@ export interface components {
          *     the abbreviation problem from unsolvable into a one-off: a trade name like
          *     `OMEZ-20` cannot be derived from `OMEPRAZOLE 20MG CAP` by any rule worth
          *     trusting, but it only has to be answered once.
+         * @example {
+         *       "printed_name": "OMEZ-20 CAP 10'S",
+         *       "product_id": 12,
+         *       "supplier_id": 3,
+         *       "unit_cost": "38.50"
+         *     }
          */
         RememberAliasIn: {
             /** Supplier Id */
@@ -3332,6 +3956,15 @@ export interface components {
          * SettingsUpdateIn
          * @description A batch of changes. All or nothing — a half-saved settings screen leaves
          *     an administrator unsure what is actually in effect.
+         * @example {
+         *       "features": {
+         *         "features.invoice_ocr": true
+         *       },
+         *       "values": {
+         *         "anomaly.z_threshold": 3,
+         *         "forecast.horizon_days": 30
+         *       }
+         *     }
          */
         SettingsUpdateIn: {
             /** Values */
@@ -3556,6 +4189,10 @@ export interface components {
          *     `state_code` is editable because a wrong one is a common data-entry slip,
          *     and past orders are unaffected: each stores the GST regime it was raised
          *     under rather than recomputing it from the supplier.
+         * @example {
+         *       "payment_terms_days": 60,
+         *       "phone": "+91 98200 44556"
+         *     }
          */
         SupplierUpdate: {
             /** Name */
@@ -3820,6 +4457,10 @@ export interface components {
          *     `email` is absent on purpose. It is the login identity and appears in the
          *     audit trail, so changing it would silently rewrite who past entries point
          *     at. Retire the account and create a new one instead.
+         * @example {
+         *       "role_id": 3,
+         *       "warehouse_id": 2
+         *     }
          */
         UserUpdate: {
             /** Full Name */
@@ -3894,6 +4535,9 @@ export interface components {
         /**
          * WarehouseUpdate
          * @description `code` is omitted on purpose — documents and reports refer to it.
+         * @example {
+         *       "address": "Plot 14, MIDC Andheri, Mumbai 400093"
+         *     }
          */
         WarehouseUpdate: {
             /** Name */
