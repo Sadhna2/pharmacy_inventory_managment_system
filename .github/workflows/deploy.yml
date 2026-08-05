@@ -106,6 +106,9 @@ jobs:
         env:
           API_IMAGE: ${{ needs.build.outputs.image_base }}-api:${{ github.sha }}
           WEB_IMAGE: ${{ needs.build.outputs.image_base }}-web:${{ github.sha }}
+          # Read through `env:` rather than interpolated into the script below,
+          # so a key containing a quote is a value and not a shell injection.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -129,6 +132,23 @@ jobs:
           touch ~/.env
           sed -i '/^API_IMAGE=/d;/^WEB_IMAGE=/d' ~/.env
           printf 'API_IMAGE=%s\nWEB_IMAGE=%s\n' "$API_IMAGE" "$WEB_IMAGE" >> ~/.env
+
+          # Invoice scanning needs a model key. `docker-compose.yml` already
+          # reads GEMINI_API_KEY from this file, but nothing ever wrote it, so
+          # the capability was off on the server no matter how many times it
+          # was deployed — the screen offered a Scan button and then said the
+          # server was not configured.
+          #
+          # Only written when the secret exists. An unset secret leaves a key
+          # someone set by hand on the box alone, rather than blanking it on
+          # the next deploy and taking the feature down again.
+          if [ -n "${GEMINI_API_KEY:-}" ]; then
+            sed -i '/^GEMINI_API_KEY=/d' ~/.env
+            printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" >> ~/.env
+            echo "GEMINI_API_KEY written to ~/.env"
+          else
+            echo "GEMINI_API_KEY secret not set — leaving ~/.env untouched"
+          fi
 
           docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
           # `up` runs the migrate service first and waits for it to succeed, so
