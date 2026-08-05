@@ -992,6 +992,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sales-orders/{so_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales Order Invoice
+         * @description The order as a print-ready GST tax invoice, for the browser to print.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → Print invoice
+         *
+         *     The order rendered as a GST tax invoice: the line table, the HSN-wise summary the statute asks for at the foot, and the grand total spelled out in lakh and crore rather than millions. Which tax columns appear is decided once from the document's own interstate flag — IGST, or CGST+SGST — never per line, because a zero-rated line would otherwise flip the table halfway down. Every HSN printed is the one frozen onto the line when the order was priced, so a reprint still matches the copy the customer holds after the catalogue has been corrected. Returns HTML, not a PDF: every browser already paginates a long table for printing better than a server-side renderer would, and it saves a native dependency on a 2 GB box.
+         */
+        get: operations["sales_order_invoice_api_v1_sales_orders__so_id__invoice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sales-orders/{so_id}/allocate": {
         parameters: {
             query?: never;
@@ -1126,6 +1152,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transfers/{transfer_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Transfer
+         * @description Abandon a transfer before it ships.
+         *
+         *     Gated on `transfer.create` rather than `transfer.approve`: abandoning a
+         *     document moves no stock, so the branch that raised it can take it back
+         *     without finding a second person to agree.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Transfers → row menu → Cancel transfer
+         *
+         *     Abandons a transfer that has not shipped, so a document that cannot be dispatched can leave the list. Draft, pending and approved can be cancelled; once IN_TRANSIT the goods are on a road and the answer is to receive them and transfer them back, which leaves both movements in the ledger. Posts nothing — a transfer holds no stock before dispatch.
+         */
+        post: operations["cancel_transfer_api_v1_transfers__transfer_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transfers/{transfer_id}/dispatch": {
         parameters: {
             query?: never;
@@ -1232,6 +1288,36 @@ export interface paths {
          *     Approves and posts the ledger entries. Refuses self-approval.
          */
         post: operations["approve_adjustment_api_v1_adjustments__adjustment_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adjustments/{adjustment_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Adjustment
+         * @description Withdraw an adjustment before it posts.
+         *
+         *     Gated on `stock.adjust` rather than `adjustment.approve`: withdrawing a
+         *     document moves no stock, so the raiser is entitled to take back their own
+         *     mistake without finding a second person to agree.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Adjustments → row menu → Cancel adjustment
+         *
+         *     Withdraws an adjustment that has not posted, so a document the approver will not pass can leave the queue. Only PENDING_APPROVAL can be cancelled — once approved the entry is in the ledger, which is corrected by a reversing movement and never by editing. The raiser may cancel their own: withdrawing a document moves no stock.
+         */
+        post: operations["cancel_adjustment_api_v1_adjustments__adjustment_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3170,6 +3256,8 @@ export interface components {
             qty_received: string;
             /** Unit Price */
             unit_price: string;
+            /** Hsn Code */
+            hsn_code?: string | null;
         };
         /** Page[AdjustmentOut] */
         Page_AdjustmentOut_: {
@@ -3875,6 +3963,8 @@ export interface components {
             qty_shipped: string;
             /** Unit Price */
             unit_price: string;
+            /** Hsn Code */
+            hsn_code?: string | null;
         };
         /**
          * SalesOrderIn
@@ -4754,7 +4844,7 @@ export interface operations {
                 /** @description Search SKU, name, composition or barcode */
                 q?: string | null;
                 category_id?: number | null;
-                tracking_mode?: string | null;
+                tracking_mode?: components["schemas"]["TrackingMode"] | null;
                 is_active?: boolean | null;
                 below_reorder?: boolean;
                 page?: number;
@@ -6252,6 +6342,37 @@ export interface operations {
             };
         };
     };
+    sales_order_invoice_api_v1_sales_orders__so_id__invoice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                so_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     allocate_order_api_v1_sales_orders__so_id__allocate_post: {
         parameters: {
             query?: never;
@@ -6442,6 +6563,37 @@ export interface operations {
             };
         };
     };
+    cancel_transfer_api_v1_transfers__transfer_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transfer_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     dispatch_transfer_api_v1_transfers__transfer_id__dispatch_post: {
         parameters: {
             query?: never;
@@ -6571,6 +6723,37 @@ export interface operations {
         };
     };
     approve_adjustment_api_v1_adjustments__adjustment_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                adjustment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdjustmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_adjustment_api_v1_adjustments__adjustment_id__cancel_post: {
         parameters: {
             query?: never;
             header?: never;
