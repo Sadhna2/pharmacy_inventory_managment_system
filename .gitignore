@@ -24,13 +24,18 @@ web/.vite/
 .vscode/
 
 # Working notes for the team — not a deliverable
-COMMIT_PLAN.md
+/COMMIT_PLAN.md
 
 # Internal design reference, kept out of the published repository.
 # Code comments still cite it by section ("ARCHITECTURE.md §6.4") because those
 # citations are the reason a given line is written the way it is; they read as
 # provenance rather than as links, and stay useful to anyone holding the file.
-ARCHITECTURE.md
+#
+# Anchored with a leading slash so it means *this* file at the repository root
+# and nothing else. Written bare, the pattern matches the basename at every
+# depth, which silently swallowed the published `docs/ARCHITECTURE.md` — a
+# committed deliverable that simply never appeared in `git status`.
+/ARCHITECTURE.md
 
 # Generated benchmark artefacts — regenerate with bench/ocr/generate.py
 bench/ocr/out/
