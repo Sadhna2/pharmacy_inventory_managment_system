@@ -25,6 +25,40 @@ export PATH="$PGBIN:$PATH"
 export LC_ALL=C LANG=C   # macOS: postgres refuses to start without this
 
 case "${1:-status}" in
+  # First run on a new clone. `api/.pgdata` is gitignored — a cluster is a
+  # database, not source — so a fresh checkout has nothing for `start` to
+  # start. Without this the documented native path failed on the first
+  # command, at `pg_ctl: directory "api/.pgdata" does not exist`, which reads
+  # like a broken repository rather than a step nobody had written down.
+  init)
+    if [ -d "$PGDATA" ]; then
+      echo "already initialised at $PGDATA — run '$0 start'"
+      exit 0
+    fi
+    command -v initdb >/dev/null 2>&1 || {
+      echo "initdb not found. Install PostgreSQL 16 first:" >&2
+      echo "  macOS:  brew install postgresql@16" >&2
+      echo "  Linux:  sudo apt install postgresql-16" >&2
+      echo "Or skip all of this and use Docker: docker compose up" >&2
+      exit 1
+    }
+    # --auth=trust is safe here and only here: the cluster listens on a unix
+    # socket inside the repo, on a non-default port, and is never exposed.
+    #
+    # --encoding=UTF8 is not optional. This script exports LC_ALL=C (macOS
+    # postgres refuses to start without it), and under a C locale initdb
+    # defaults the cluster to SQL_ASCII. psycopg then returns bytes rather
+    # than str for server strings, and the first thing SQLAlchemy does with a
+    # new connection is regex the version banner — so every command dies at
+    # "cannot use a string pattern on a bytes-like object", a message that
+    # says nothing whatsoever about database encoding.
+    initdb -D "$PGDATA" -U pharmacy --auth=trust \
+      --encoding=UTF8 --locale=C >/dev/null
+    pg_ctl -D "$PGDATA" -o "-p $PGPORT -k $PGSOCK" -l "$PGDATA/server.log" start
+    createdb -h "$PGHOST" -p "$PGPORT" -U pharmacy pharmacy
+    echo "initialised and running on :$PGPORT"
+    echo "next: cd api && .venv/bin/alembic upgrade head"
+    ;;
   start)
     if pg_ctl -D "$PGDATA" status >/dev/null 2>&1; then
       echo "already running on :$PGPORT"
@@ -55,7 +89,7 @@ case "${1:-status}" in
     echo "Done. Run: cd api && .venv/bin/alembic upgrade head"
     ;;
   *)
-    echo "usage: $0 {start|stop|status|psql|reset}" >&2
+    echo "usage: $0 {init|start|stop|status|psql|reset}" >&2
     exit 1
     ;;
 esac

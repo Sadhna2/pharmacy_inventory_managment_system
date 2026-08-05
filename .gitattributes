@@ -1,0 +1,29 @@
+# Line endings, decided here rather than by each teammate's Git config.
+#
+# Git on Windows defaults to core.autocrlf=true, which rewrites LF to CRLF on
+# checkout. That is harmless for source we only ever read, and breaks anything
+# a Linux container executes: a shell script with CRLF fails as
+# `/bin/sh^M: bad interpreter`, and the error names a file that looks fine in
+# an editor. The team is on both macOS and Windows and the containers are
+# Linux, so the files below are pinned to LF everywhere.
+
+# Sensible default: Git decides what is text, and normalises it in the repo.
+* text=auto
+
+# Executed inside Linux containers or by bash — must stay LF whatever the host.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+Caddyfile       text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+.env.example    text eol=lf
+
+# Binary: never normalise, never diff as text.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.webp          binary
+*.pdf           binary
+*.zip           binary
+*.ico           binary
