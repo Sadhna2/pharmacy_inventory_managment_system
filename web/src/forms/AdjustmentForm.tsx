@@ -46,8 +46,9 @@ export function AdjustmentForm({
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
 
   const warehouses = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
+    queryKey: ["warehouses", "active"],
+    queryFn: () =>
+      api.get<Warehouse[]>("/api/v1/warehouses?is_active=true"),
     enabled: open,
   });
 

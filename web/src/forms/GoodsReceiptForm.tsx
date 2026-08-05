@@ -149,8 +149,9 @@ export function GoodsReceiptForm({
   const [creatingFor, setCreatingFor] = useState<number | null>(null);
 
   const warehouses = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
+    queryKey: ["warehouses", "active"],
+    queryFn: () =>
+      api.get<Warehouse[]>("/api/v1/warehouses?is_active=true"),
     enabled: open,
   });
 
@@ -158,8 +159,9 @@ export function GoodsReceiptForm({
   // distributor — but the modal is opened far more often than a scan is run,
   // so it is fetched with the rest rather than on demand.
   const suppliers = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: () => api.get<Supplier[]>("/api/v1/suppliers"),
+    queryKey: ["suppliers", "active"],
+    queryFn: () =>
+      api.get<Supplier[]>("/api/v1/suppliers?is_active=true"),
     enabled: open,
   });
 
@@ -602,13 +604,18 @@ export function GoodsReceiptForm({
           an invoice in the box, scanning it is the first thing to do, and
           everything below is either filled in by it or checked against it.
         */}
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2 dark:border-slate-700">
+        {/*
+          `flex-wrap` so a scan error, which stacks under the button, drops the
+          controls onto their own line at a narrow width rather than forcing
+          the panel wider than the dialog.
+        */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-line px-3 py-2">
           {/*
             Nothing here waits on a field below it. Scanning is the first thing
             you do with a carton, and where the stock ends up is something you
             answer after reading the paper — not before.
           */}
-          <p className="text-xs text-slate-600 dark:text-slate-400">
+          <p className="text-xs text-ink-soft">
             Have the distributor&rsquo;s invoice? Photograph it and the batches,
             expiries and quantities fill in below.
             {!poId && " Picking the order first makes the matching surer."}
@@ -680,7 +687,7 @@ export function GoodsReceiptForm({
         )}
 
         {taught && (
-          <p className="text-xs text-amber-700 dark:text-amber-300">{taught}</p>
+          <p className="text-xs text-warn-strong">{taught}</p>
         )}
 
         <FormGrid>

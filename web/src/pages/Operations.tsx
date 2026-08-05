@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -6,6 +6,8 @@ import {
   Check,
   PackageCheck,
   Plus,
+  MoreHorizontal,
+  Printer,
   ScanLine,
   Send,
   ShieldCheck,
@@ -60,17 +62,121 @@ function ErrorBanner({ message }: { message: string | null }) {
   );
 }
 
+/**
+ * Who raised a document, and who signed it off.
+ *
+ * Purchase orders and adjustments both refuse to let one person do both, and
+ * the approver is certifying someone else's work. Until now the API returned
+ * `created_by: 2` and no screen showed even that, so the second signature was
+ * being given without knowing whose work it covered. The names were always in
+ * the database — this is the missing half of a control that already existed.
+ */
+function RaisedBy({
+  createdBy,
+  approvedBy,
+}: {
+  createdBy?: string | null;
+  approvedBy?: string | null;
+}) {
+  if (!createdBy && !approvedBy) {
+    return <span className="text-[13px] text-ink-faint">—</span>;
+  }
+  return (
+    <div className="min-w-0 leading-tight">
+      <p className="truncate text-[13px] text-ink-soft">{createdBy ?? "—"}</p>
+      {approvedBy && (
+        <p className="truncate text-[11px] text-ink-faint">
+          {/* Named rather than a tick, because "approved" without a name is
+              the same gap in a different shape. */}
+          approved by {approvedBy}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The same column in the three tables that have a maker and a checker. */
+function raisedByColumn<T extends {
+  created_by_name?: string | null;
+  approved_by_name?: string | null;
+}>(): Column<T> {
+  return {
+    key: "raised_by",
+    header: "Raised by",
+    hideBelow: "md",
+    card: "secondary",
+    render: (row) => (
+      <RaisedBy
+        createdBy={row.created_by_name}
+        approvedBy={row.approved_by_name}
+      />
+    ),
+  };
+}
+
+/**
+ * One button per row, opening the actions for that document.
+ *
+ * Approve and Cancel sitting side by side in a table gave every row a
+ * different silhouette — two buttons, one button, or none — which read as
+ * arbitrary even though it is driven entirely by status. A single control
+ * with a consistent shape is calmer, and the sheet it opens has room to say
+ * *why* an action is unavailable instead of silently omitting it.
+ */
+function RowMenuButton({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation(); // the row itself is clickable
+        onOpen();
+      }}
+    >
+      <MoreHorizontal className="size-4" />
+    </Button>
+  );
+}
+
+/** A labelled fact inside the actions sheet. */
+function SheetFact({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5">
+      <span className="text-[12px] text-ink-faint">{label}</span>
+      <span className="text-right text-[13px] text-ink">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Why an approval is not on offer.
+ *
+ * Separation of duties is a rule people meet rather than read, so the moment
+ * it bites is the moment to explain it. Omitting the button silently teaches
+ * nothing and looks like a bug.
+ */
+function SelfApprovalNote() {
+  return (
+    <p className="rounded-lg border border-warn/20 bg-warn-soft px-3 py-2 text-[12px] text-ink-soft">
+      You raised this, so you cannot also approve it. A second person has to
+      sign it off.
+    </p>
+  );
+}
+
 /* =========================================================== purchase orders */
 
 export function PurchaseOrders() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [grnOpen, setGrnOpen] = useState(false);
   const [cancelling, setCancelling] = useState<PurchaseOrder | null>(null);
+  const [acting, setActing] = useState<PurchaseOrder | null>(null);
   const action = useAction(["purchase-orders", "balances", "stock"]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["purchase-orders", page],
     queryFn: () =>
       api.get<Page<PurchaseOrder>>(`/api/v1/purchase-orders${qs({ page, size: 25 })}`),
@@ -148,6 +254,7 @@ export function PurchaseOrders() {
         );
       },
     },
+    raisedByColumn<PurchaseOrder>(),
     {
       key: "status",
       header: "Status",
@@ -168,45 +275,12 @@ export function PurchaseOrders() {
       header: "",
       numeric: true,
       card: "actions",
-      render: (row) => {
-        const awaiting = row.status === "DRAFT" || row.status === "PENDING_APPROVAL";
-        // The server refuses once goods have landed; mirror that so the button
-        // never appears where it cannot work.
-        const stoppable = row.status !== "RECEIVED" && row.status !== "CANCELLED";
-        return (
-          <div className="flex items-center justify-end gap-1.5">
-            {can("po.create") && stoppable && (
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Cancel ${row.po_number}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCancelling(row);
-                }}
-              >
-                <Ban className="size-3.5" />
-                <span className="md:hidden">Cancel</span>
-              </Button>
-            )}
-            {can("po.approve") && awaiting && (
-              <Button
-                size="sm"
-                variant="primary"
-                loading={action.isPending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  action.mutate({
-                    path: `/api/v1/purchase-orders/${row.id}/approve`,
-                  });
-                }}
-              >
-                <Check className="size-3.5" /> Approve
-              </Button>
-            )}
-          </div>
-        );
-      },
+      render: (row) => (
+        <RowMenuButton
+          label={`Actions for ${row.po_number}`}
+          onOpen={() => setActing(row)}
+        />
+      ),
     },
   ];
 
@@ -295,7 +369,9 @@ export function PurchaseOrders() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}
@@ -307,6 +383,79 @@ export function PurchaseOrders() {
 
       <PurchaseOrderForm open={formOpen} onClose={() => setFormOpen(false)} />
       <GoodsReceiptForm open={grnOpen} onClose={() => setGrnOpen(false)} />
+
+      <Modal
+        open={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.po_number ?? "Order"}
+        description={acting?.supplier_name ?? undefined}
+      >
+        {acting && (
+          <div className="space-y-3">
+            <div className="divide-y divide-line rounded-lg border border-line px-3">
+              <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact label="Raised by" value={acting.created_by_name ?? "—"} />
+              {acting.approved_by_name && (
+                <SheetFact label="Approved by" value={acting.approved_by_name} />
+              )}
+              <SheetFact label="Deliver to" value={acting.warehouse_name ?? "—"} />
+              <SheetFact label="Total" value={money(acting.grand_total)} />
+            </div>
+
+            {/* Both of the server's refusals, stated rather than implied. */}
+            {can("po.approve") &&
+              (acting.status === "DRAFT" ||
+                acting.status === "PENDING_APPROVAL") &&
+              !!user &&
+              acting.created_by === user.id && <SelfApprovalNote />}
+
+            <div className="flex flex-col gap-2">
+              {can("po.approve") &&
+                (acting.status === "DRAFT" ||
+                  acting.status === "PENDING_APPROVAL") &&
+                (!user || acting.created_by !== user.id) && (
+                  <Button
+                    variant="primary"
+                    loading={action.isPending}
+                    onClick={() => {
+                      action.mutate({
+                        path: `/api/v1/purchase-orders/${acting.id}/approve`,
+                      });
+                      setActing(null);
+                    }}
+                  >
+                    <Check className="size-4" /> Approve order
+                  </Button>
+                )}
+              {/* The server refuses once goods have landed; mirror that so the
+                  button never appears where it cannot work. */}
+              {can("po.create") &&
+                acting.status !== "RECEIVED" &&
+                acting.status !== "CANCELLED" && (
+                  <Button
+                    onClick={() => {
+                      // Hand straight to the existing confirm step — cancelling
+                      // is destructive enough to deserve its own sentence.
+                      const row = acting;
+                      setActing(null);
+                      setCancelling(row);
+                    }}
+                  >
+                    <Ban className="size-4" /> Cancel order
+                  </Button>
+                )}
+              {/* A received or cancelled order is finished; say so rather than
+                  showing an empty sheet. */}
+              {(acting.status === "RECEIVED" ||
+                acting.status === "CANCELLED") && (
+                <p className="text-center text-[13px] text-ink-faint">
+                  Nothing further to do on this order.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <ConfirmDialog
         open={cancelling !== null}
@@ -369,9 +518,11 @@ export function SalesOrders() {
   const [formOpen, setFormOpen] = useState(false);
   const [allocations, setAllocations] = useState<Allocation[] | null>(null);
   const [cancelling, setCancelling] = useState<SalesOrder | null>(null);
+  const [acting, setActing] = useState<SalesOrder | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
   const action = useAction(["sales-orders", "balances", "stock"]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["sales-orders", page],
     queryFn: () =>
       api.get<Page<SalesOrder>>(`/api/v1/sales-orders${qs({ page, size: 25 })}`),
@@ -441,56 +592,12 @@ export function SalesOrders() {
       header: "",
       numeric: true,
       card: "actions",
-      render: (row) => {
-        // Cancelling releases any batches already held, so it stays available
-        // right up until the goods leave the building.
-        const stoppable =
-          row.status !== "COMPLETED" &&
-          row.status !== "CANCELLED" &&
-          row.status !== "SHIPPED";
-        return (
-          <div className="flex items-center justify-end gap-1.5">
-            {can("so.create") && stoppable && (
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Cancel ${row.so_number}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCancelling(row);
-                }}
-              >
-                <Ban className="size-3.5" />
-                <span className="md:hidden">Cancel</span>
-              </Button>
-            )}
-            {can("so.fulfil") && row.status === "DRAFT" && (
-              <Button
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  allocate(row.id);
-                }}
-              >
-                <PackageCheck className="size-3.5" /> Allocate
-              </Button>
-            )}
-            {can("so.fulfil") && row.status === "ALLOCATED" && (
-              <Button
-                size="sm"
-                variant="primary"
-                loading={action.isPending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  action.mutate({ path: `/api/v1/sales-orders/${row.id}/ship` });
-                }}
-              >
-                <Send className="size-3.5" /> Ship
-              </Button>
-            )}
-          </div>
-        );
-      },
+      render: (row) => (
+        <RowMenuButton
+          label={`Actions for ${row.so_number}`}
+          onOpen={() => setActing(row)}
+        />
+      ),
     },
   ];
 
@@ -513,7 +620,9 @@ export function SalesOrders() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}
@@ -524,6 +633,121 @@ export function SalesOrders() {
       </Card>
 
       <SalesOrderForm open={formOpen} onClose={() => setFormOpen(false)} />
+
+      <Modal
+        open={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.so_number ?? "Order"}
+        description={acting?.customer_name ?? undefined}
+      >
+        {acting && (
+          <div className="space-y-3">
+            <div className="divide-y divide-line rounded-lg border border-line px-3">
+              <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact label="Ship from" value={acting.warehouse_name ?? "—"} />
+              <SheetFact label="Ordered" value={date(acting.order_date)} />
+              <SheetFact label="Total" value={money(acting.grand_total)} />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {can("so.fulfil") && acting.status === "DRAFT" && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    const id = acting.id;
+                    setActing(null);
+                    allocate(id);
+                  }}
+                >
+                  <PackageCheck className="size-4" /> Allocate batches
+                </Button>
+              )}
+              {can("so.fulfil") && acting.status === "ALLOCATED" && (
+                <Button
+                  variant="primary"
+                  loading={action.isPending}
+                  onClick={() => {
+                    action.mutate({
+                      path: `/api/v1/sales-orders/${acting.id}/ship`,
+                    });
+                    setActing(null);
+                  }}
+                >
+                  <Send className="size-4" /> Ship
+                </Button>
+              )}
+              {/* A read, not a workflow step, so it stays available on a
+                  shipped or completed order — a reprint is usually asked for
+                  long after the goods have gone. Hidden on a DRAFT: nothing is
+                  held for it yet and its lines can still change, so anything
+                  printed now is a document that may not survive the morning.
+                  No permission check because the list itself needs `so.view`,
+                  which is all the endpoint asks for. */}
+              {acting.status !== "DRAFT" && (
+                <Button
+                  onClick={() => {
+                    // The window is opened synchronously, inside the click, and
+                    // filled in afterwards. Both halves matter: opening it
+                    // after the `await` would be swallowed by the popup
+                    // blocker, and pointing it straight at the API path would
+                    // render a 401, because a top-level navigation carries no
+                    // Authorization header.
+                    const printed = window.open("", "_blank");
+                    api
+                      .getText(`/api/v1/sales-orders/${acting.id}/invoice`)
+                      .then((html) => {
+                        if (!printed) return;
+                        printed.document.write(html);
+                        printed.document.close();
+                      })
+                      .catch((err) => {
+                        printed?.close();
+                        setPrintError(
+                          err instanceof ApiError
+                            ? err.problem.detail
+                            : "The invoice could not be produced.",
+                        );
+                      });
+                  }}
+                >
+                  <Printer className="size-4" /> Print invoice
+                </Button>
+              )}
+              {/* A blocked popup is silent, and so is a failed fetch — without
+                  this the button would look like it did nothing at all, which
+                  is the failure it was just fixed for. */}
+              {printError && (
+                <p className="text-center text-[12px] text-danger">
+                  {printError}
+                </p>
+              )}
+              {/* Cancelling releases any batches already held, so it stays
+                  available right up until the goods leave the building. */}
+              {can("so.create") &&
+                acting.status !== "COMPLETED" &&
+                acting.status !== "CANCELLED" &&
+                acting.status !== "SHIPPED" && (
+                  <Button
+                    onClick={() => {
+                      const row = acting;
+                      setActing(null);
+                      setCancelling(row);
+                    }}
+                  >
+                    <Ban className="size-4" /> Cancel order
+                  </Button>
+                )}
+              {(acting.status === "COMPLETED" ||
+                acting.status === "CANCELLED" ||
+                acting.status === "SHIPPED") && (
+                <p className="text-center text-[13px] text-ink-faint">
+                  Nothing further to do on this order.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <ConfirmDialog
         open={cancelling !== null}
@@ -598,9 +822,11 @@ export function Transfers() {
   const { can } = useAuth();
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
+  const [acting, setActing] = useState<Transfer | null>(null);
+  const [cancelling, setCancelling] = useState<Transfer | null>(null);
   const action = useAction(["transfers", "balances", "stock"]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["transfers", page],
     queryFn: () =>
       api.get<Page<Transfer>>(`/api/v1/transfers${qs({ page, size: 25 })}`),
@@ -637,6 +863,7 @@ export function Transfers() {
       card: "meta",
       render: (row) => <span>{row.lines.length}</span>,
     },
+    raisedByColumn<Transfer>(),
     {
       key: "status",
       header: "Status",
@@ -648,47 +875,12 @@ export function Transfers() {
       header: "",
       numeric: true,
       card: "actions",
-      render: (row) => {
-        if (row.status === "DRAFT" && can("transfer.approve")) {
-          return (
-            <Button
-              size="sm"
-              onClick={() =>
-                action.mutate({ path: `/api/v1/transfers/${row.id}/approve` })
-              }
-            >
-              <Check className="size-3.5" /> Approve
-            </Button>
-          );
-        }
-        if (row.status === "APPROVED" && can("transfer.approve")) {
-          return (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() =>
-                action.mutate({ path: `/api/v1/transfers/${row.id}/dispatch` })
-              }
-            >
-              <Truck className="size-3.5" /> Dispatch
-            </Button>
-          );
-        }
-        if (row.status === "IN_TRANSIT" && can("stock.move")) {
-          return (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() =>
-                action.mutate({ path: `/api/v1/transfers/${row.id}/receive` })
-              }
-            >
-              <PackageCheck className="size-3.5" /> Receive
-            </Button>
-          );
-        }
-        return null;
-      },
+      render: (row) => (
+        <RowMenuButton
+          label={`Actions for ${row.transfer_number}`}
+          onOpen={() => setActing(row)}
+        />
+      ),
     },
   ];
 
@@ -711,7 +903,9 @@ export function Transfers() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}
@@ -722,6 +916,124 @@ export function Transfers() {
       </Card>
 
       <TransferForm open={formOpen} onClose={() => setFormOpen(false)} />
+
+      <Modal
+        open={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.transfer_number ?? "Transfer"}
+        description={
+          acting
+            ? `${acting.from_warehouse_name} → ${acting.to_warehouse_name}`
+            : undefined
+        }
+      >
+        {acting && (
+          <div className="space-y-3">
+            <div className="divide-y divide-line rounded-lg border border-line px-3">
+              <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact label="Raised by" value={acting.created_by_name ?? "—"} />
+              {acting.approved_by_name && (
+                <SheetFact label="Approved by" value={acting.approved_by_name} />
+              )}
+              <SheetFact label="Items" value={acting.lines.length} />
+            </div>
+
+            {/*
+              A transfer moves in three steps, and only one is ever available.
+              Presented as one button each rather than a row of three, so the
+              next step is unambiguous.
+            */}
+            {(acting.status === "DRAFT" ||
+              acting.status === "PENDING_APPROVAL") &&
+              can("transfer.approve") && (
+                <Button
+                  variant="primary"
+                  loading={action.isPending}
+                  onClick={() => {
+                    action.mutate({
+                      path: `/api/v1/transfers/${acting.id}/approve`,
+                    });
+                    setActing(null);
+                  }}
+                >
+                  <Check className="size-4" /> Approve transfer
+                </Button>
+              )}
+            {acting.status === "APPROVED" && can("transfer.approve") && (
+              <Button
+                variant="primary"
+                loading={action.isPending}
+                onClick={() => {
+                  action.mutate({ path: `/api/v1/transfers/${acting.id}/dispatch` });
+                  setActing(null);
+                }}
+              >
+                <Truck className="size-4" /> Dispatch
+              </Button>
+            )}
+            {acting.status === "IN_TRANSIT" && can("stock.move") && (
+              <Button
+                variant="primary"
+                loading={action.isPending}
+                onClick={() => {
+                  action.mutate({ path: `/api/v1/transfers/${acting.id}/receive` });
+                  setActing(null);
+                }}
+              >
+                <PackageCheck className="size-4" /> Receive at destination
+              </Button>
+            )}
+            {/* Before it ships, and only before: once the stock is on a road
+                the transfer has to land somewhere, and the API refuses. */}
+            {can("transfer.create") &&
+              (acting.status === "DRAFT" ||
+                acting.status === "PENDING_APPROVAL" ||
+                acting.status === "APPROVED") && (
+                <Button
+                  onClick={() => {
+                    const row = acting;
+                    setActing(null);
+                    setCancelling(row);
+                  }}
+                >
+                  <Ban className="size-4" /> Cancel transfer
+                </Button>
+              )}
+            {/* COMPLETED, not RECEIVED — `receive_transfer` sets COMPLETED, so
+                this line was guarded on a status transfers never reach and a
+                finished transfer opened a sheet with nothing in it at all. */}
+            {(acting.status === "COMPLETED" ||
+              acting.status === "CANCELLED") && (
+              <p className="text-center text-[13px] text-ink-faint">
+                Nothing further to do on this transfer.
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={cancelling !== null}
+        onClose={() => setCancelling(null)}
+        danger
+        title={`Cancel ${cancelling?.transfer_number ?? "transfer"}?`}
+        description="It stays in the list marked Cancelled. No stock moves, and nothing is deleted."
+        confirmLabel="Cancel transfer"
+        path={`/api/v1/transfers/${cancelling?.id}/cancel`}
+        invalidate={["transfers"]}
+      >
+        {cancelling && (
+          <div className="rounded-lg border border-line bg-muted/40 px-3 py-2.5 text-[13px]">
+            <p className="text-ink-soft">
+              {cancelling.from_warehouse_name} → {cancelling.to_warehouse_name}
+            </p>
+            <p className="mt-1 text-ink-soft">
+              Nothing has left the source yet, so nothing is released. Raise a
+              fresh transfer if the quantities need to change.
+            </p>
+          </div>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
@@ -729,12 +1041,14 @@ export function Transfers() {
 /* ============================================================== adjustments */
 
 export function Adjustments() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
+  const [acting, setActing] = useState<Adjustment | null>(null);
+  const [cancelling, setCancelling] = useState<Adjustment | null>(null);
   const action = useAction(["adjustments", "balances", "stock"]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["adjustments", page],
     queryFn: () =>
       api.get<Page<Adjustment>>(`/api/v1/adjustments${qs({ page, size: 25 })}`),
@@ -777,6 +1091,7 @@ export function Adjustments() {
         );
       },
     },
+    raisedByColumn<Adjustment>(),
     {
       key: "status",
       header: "Status",
@@ -788,18 +1103,12 @@ export function Adjustments() {
       header: "",
       numeric: true,
       card: "actions",
-      render: (row) =>
-        row.status === "PENDING_APPROVAL" && can("adjustment.approve") ? (
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() =>
-              action.mutate({ path: `/api/v1/adjustments/${row.id}/approve` })
-            }
-          >
-            <Check className="size-3.5" /> Approve
-          </Button>
-        ) : null,
+      render: (row) => (
+        <RowMenuButton
+          label={`Actions for ${row.adjustment_number}`}
+          onOpen={() => setActing(row)}
+        />
+      ),
     },
   ];
 
@@ -822,7 +1131,9 @@ export function Adjustments() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}
@@ -833,6 +1144,94 @@ export function Adjustments() {
       </Card>
 
       <AdjustmentForm open={formOpen} onClose={() => setFormOpen(false)} />
+
+      <ConfirmDialog
+        open={cancelling !== null}
+        onClose={() => setCancelling(null)}
+        danger
+        title={`Cancel ${cancelling?.adjustment_number ?? "adjustment"}?`}
+        description="It stays in the list marked Cancelled. No stock moves, and nothing is deleted."
+        confirmLabel="Cancel adjustment"
+        path={`/api/v1/adjustments/${cancelling?.id}/cancel`}
+        invalidate={["adjustments"]}
+      >
+        {cancelling && (
+          <div className="rounded-lg border border-line bg-muted/40 px-3 py-2.5 text-[13px]">
+            <p className="text-ink-soft">
+              {cancelling.reason_code} · {cancelling.lines.length}{" "}
+              {cancelling.lines.length === 1 ? "line" : "lines"}
+            </p>
+            <p className="mt-1 text-ink-soft">
+              Raise a fresh adjustment if the figures need to change. A
+              correction that has already posted is undone by a reversing
+              entry, never by editing this one.
+            </p>
+          </div>
+        )}
+      </ConfirmDialog>
+
+      <Modal
+        open={acting !== null}
+        onClose={() => setActing(null)}
+        title={acting?.adjustment_number ?? "Adjustment"}
+        description={acting?.reason_code ?? undefined}
+      >
+        {acting && (
+          <div className="space-y-3">
+            <div className="divide-y divide-line rounded-lg border border-line px-3">
+              <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact label="Raised by" value={acting.created_by_name ?? "—"} />
+              {acting.approved_by_name && (
+                <SheetFact label="Approved by" value={acting.approved_by_name} />
+              )}
+            </div>
+
+            {can("adjustment.approve") &&
+              acting.status === "PENDING_APPROVAL" &&
+              !!user &&
+              acting.created_by === user.id && <SelfApprovalNote />}
+
+            <div className="flex flex-col gap-2">
+              {can("adjustment.approve") &&
+                acting.status === "PENDING_APPROVAL" &&
+                (!user || acting.created_by !== user.id) && (
+                  <Button
+                    variant="primary"
+                    loading={action.isPending}
+                    onClick={() => {
+                      action.mutate({
+                        path: `/api/v1/adjustments/${acting.id}/approve`,
+                      });
+                      setActing(null);
+                    }}
+                  >
+                    <Check className="size-4" /> Approve adjustment
+                  </Button>
+                )}
+              {/* The way out of the queue. Some adjustments cannot be approved
+                  however long they sit there — the stock they would take out
+                  has since been sold, or the approver simply disagrees — and
+                  without this they stayed at the top of the list forever. */}
+              {can("stock.adjust") && acting.status === "PENDING_APPROVAL" && (
+                <Button
+                  onClick={() => {
+                    const row = acting;
+                    setActing(null);
+                    setCancelling(row);
+                  }}
+                >
+                  <Ban className="size-4" /> Cancel adjustment
+                </Button>
+              )}
+              {acting.status !== "PENDING_APPROVAL" && (
+                <p className="text-center text-[13px] text-ink-faint">
+                  Nothing further to do on this adjustment.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

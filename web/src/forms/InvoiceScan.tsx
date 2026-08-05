@@ -48,20 +48,20 @@ const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 const SEVERITY = {
   BLOCK: {
     icon: OctagonAlert,
-    tone: "text-rose-700 dark:text-rose-300",
-    dot: "bg-rose-500",
+    tone: "text-danger",
+    dot: "bg-danger",
     label: "Must be checked",
   },
   REVIEW: {
     icon: AlertTriangle,
-    tone: "text-amber-700 dark:text-amber-300",
-    dot: "bg-amber-500",
+    tone: "text-warn-strong",
+    dot: "bg-warn-strong",
     label: "Worth a look",
   },
   INFO: {
     icon: Info,
-    tone: "text-slate-600 dark:text-slate-400",
-    dot: "bg-slate-400",
+    tone: "text-ink-soft",
+    dot: "bg-ink-faint",
     label: "Noted",
   },
 } as const;
@@ -216,8 +216,20 @@ export function InvoiceScanButton({
       >
         <ScanLine className="size-4" /> Scan invoice
       </Button>
+      {/*
+        Capped and wrapping, because this sits in a `shrink-0` group inside a
+        flex row: an unconstrained line grows the group instead of wrapping,
+        and the longest message here — the one naming GEMINI_API_KEY — pushed
+        the whole control out past the border of the panel it lives in.
+
+        `text-danger` rather than a rose literal so it matches FormError and
+        every other error in the product. This was the only place in the app
+        picking its own red.
+      */}
       {error && (
-        <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>
+        <p className="max-w-[20rem] text-right text-xs leading-snug text-danger">
+          {error}
+        </p>
       )}
     </div>
   );
@@ -343,12 +355,12 @@ function FlagRow({ flag, settled }: { flag: IntakeFlag; settled?: boolean }) {
   if (settled) {
     return (
       <li className="flex gap-2 py-1 opacity-55">
-        <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
-        <span className="text-xs leading-relaxed line-through decoration-slate-400">
+        <Check className="mt-0.5 size-3.5 shrink-0 text-ok-strong" />
+        <span className="text-xs leading-relaxed line-through decoration-ink-faint">
           <span className="font-medium">
             {flag.line_no ? `Line ${flag.line_no}` : "Invoice"}
           </span>{" "}
-          <span className="text-slate-500">{flag.message}</span>
+          <span className="text-ink-faint">{flag.message}</span>
         </span>
       </li>
     );
@@ -360,14 +372,14 @@ function FlagRow({ flag, settled }: { flag: IntakeFlag; settled?: boolean }) {
         <span className="font-medium">
           {flag.line_no ? `Line ${flag.line_no}` : "Invoice"}
         </span>{" "}
-        <span className="text-slate-600 dark:text-slate-400">
+        <span className="text-ink-soft">
           {flag.message}
         </span>
         {flag.suggestion && (
           <>
             {" "}
-            <span className="text-slate-500">did you mean</span>{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] dark:bg-slate-800">
+            <span className="text-ink-faint">did you mean</span>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
               {flag.suggestion}
             </code>
             ?
@@ -429,23 +441,23 @@ export function ScanFindings({
       className={cn(
         "rounded-lg border p-3",
         blocking || unmatched
-          ? "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20"
-          : "border-emerald-300 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20",
+          ? "border-warn/30 bg-warn-soft"
+          : "border-ok/30 bg-ok-soft",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-slate-500" />
+          <Sparkles className="size-4 text-ink-faint" />
           <div>
             <p className="text-sm font-medium">
               Read {lines} {lines === 1 ? "line" : "lines"} from the invoice
             </p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">
+            <p className="text-xs text-ink-soft">
               {resolved} matched to products
               {unmatched > 0 && (
                 <>
                   {" · "}
-                  <span className="font-medium text-amber-700 dark:text-amber-300">
+                  <span className="font-medium text-warn-strong">
                     {unmatched} need{unmatched === 1 ? "s" : ""} a product
                     choosing
                   </span>
@@ -454,7 +466,7 @@ export function ScanFindings({
               {blocking > 0 && (
                 <>
                   {" · "}
-                  <span className="font-medium text-rose-700 dark:text-rose-300">
+                  <span className="font-medium text-danger">
                     {blocking} to check
                   </span>
                 </>
@@ -468,7 +480,7 @@ export function ScanFindings({
       </div>
 
       {sorted.length > 0 && (
-        <ul className="mt-2 divide-y divide-black/5 border-t border-black/5 pt-1 dark:divide-white/5 dark:border-white/5">
+        <ul className="mt-2 divide-y divide-line border-t border-line pt-1">
           {sorted.map((flag, i) => (
             <FlagRow key={`${flag.field}-${flag.line_no}-${i}`} flag={flag} />
           ))}
@@ -482,11 +494,11 @@ export function ScanFindings({
         believed. Kept behind a summary so it never crowds what is still open.
       */}
       {done.length > 0 && (
-        <details className="mt-2 border-t border-black/5 pt-1 dark:border-white/5">
-          <summary className="cursor-pointer text-xs font-medium text-emerald-700 dark:text-emerald-300">
+        <details className="mt-2 border-t border-line pt-1">
+          <summary className="cursor-pointer text-xs font-medium text-ok-strong">
             {done.length} answered on the form
           </summary>
-          <ul className="divide-y divide-black/5 dark:divide-white/5">
+          <ul className="divide-y divide-line">
             {done.map((flag, i) => (
               <FlagRow
                 key={`${flag.field}-${flag.line_no}-${i}`}
@@ -498,7 +510,7 @@ export function ScanFindings({
         </details>
       )}
 
-      <p className="mt-2 text-[11px] text-slate-500">
+      <p className="mt-2 text-[11px] text-ink-faint">
         Nothing has been received yet. Check the rows against the cartons, then
         press Receive into stock as usual.
       </p>

@@ -195,7 +195,13 @@ export function ProductPicker({
   const { data, isFetching } = useQuery({
     queryKey: ["products", "picker", term],
     queryFn: () =>
-      api.get<Page<Product>>(`/api/v1/products${qs({ q: term, size: 20 })}`),
+      // Retired products are offered nowhere a new document is being written.
+      // They stay readable on the documents that already name them — retiring
+      // is how the catalogue stops something being ordered again, not how it
+      // erases what was ordered before.
+      api.get<Page<Product>>(
+        `/api/v1/products${qs({ q: term, size: 20, is_active: true })}`,
+      ),
     enabled: open,
   });
 

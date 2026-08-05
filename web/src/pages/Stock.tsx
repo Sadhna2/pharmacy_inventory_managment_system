@@ -76,7 +76,7 @@ export function Stock() {
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["balances", { warehouse, status, q, expiry, expiryBefore, page }],
     queryFn: () =>
       api.get<Page<Balance>>(
@@ -314,7 +314,9 @@ export function Stock() {
           rowKey={(row) =>
             `${row.product_id}-${row.warehouse_id}-${row.bin_id}-${row.lot_id}-${row.status}`
           }
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}
@@ -340,7 +342,7 @@ export function Movements() {
   const [page, setPage] = useState(1);
   const [reversing, setReversing] = useState<Movement | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["movements", page],
     queryFn: () =>
       api.get<Page<Movement>>(
@@ -417,6 +419,21 @@ export function Movements() {
       ),
     },
     {
+      // The ledger has always recorded who posted each line, and the endpoint
+      // has always returned the name — the column was simply missing, so the
+      // one screen where "who did this?" is the whole question could not
+      // answer it.
+      key: "who",
+      header: "Posted by",
+      hideBelow: "xl",
+      card: "secondary",
+      render: (row) => (
+        <span className="truncate text-[13px] text-ink-soft">
+          {row.created_by_name ?? "—"}
+        </span>
+      ),
+    },
+    {
       key: "qty",
       header: "Qty",
       numeric: true,
@@ -474,7 +491,9 @@ export function Movements() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}

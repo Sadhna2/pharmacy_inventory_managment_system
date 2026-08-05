@@ -110,7 +110,7 @@ export function Audit() {
     queryFn: () => api.get<AuditFacets>("/api/v1/audit/facets"),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["audit", { action, entityType, actorId, from, to, page }],
     queryFn: () =>
       api.get<Page<AuditEntry>>(
@@ -292,7 +292,9 @@ export function Audit() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           onRowClick={setDetail}
           page={data?.page}
           pages={data?.pages}

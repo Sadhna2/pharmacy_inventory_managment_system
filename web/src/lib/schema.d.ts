@@ -1949,8 +1949,12 @@ export interface components {
             status: components["schemas"]["DocumentStatus"];
             /** Created By */
             created_by: number;
+            /** Created By Name */
+            created_by_name?: string | null;
             /** Approved By */
             approved_by?: number | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -2777,6 +2781,8 @@ export interface components {
             received_at: string;
             /** Received By */
             received_by: number;
+            /** Received By Name */
+            received_by_name?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -3547,8 +3553,12 @@ export interface components {
             notes?: string | null;
             /** Created By */
             created_by: number;
+            /** Created By Name */
+            created_by_name?: string | null;
             /** Approved By */
             approved_by?: number | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
             /** Approved At */
             approved_at?: string | null;
             /**
@@ -4296,6 +4306,14 @@ export interface components {
             /** To Warehouse Name */
             to_warehouse_name?: string | null;
             status: components["schemas"]["DocumentStatus"];
+            /** Created By */
+            created_by: number;
+            /** Created By Name */
+            created_by_name?: string | null;
+            /** Approved By */
+            approved_by?: number | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
             /** Dispatched At */
             dispatched_at?: string | null;
             /** Received At */

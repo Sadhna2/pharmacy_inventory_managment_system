@@ -33,13 +33,15 @@ export function SalesOrderForm({
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
 
   const customers = useQuery({
-    queryKey: ["customers"],
-    queryFn: () => api.get<Customer[]>("/api/v1/customers"),
+    queryKey: ["customers", "active"],
+    queryFn: () =>
+      api.get<Customer[]>("/api/v1/customers?is_active=true"),
     enabled: open,
   });
   const warehouses = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
+    queryKey: ["warehouses", "active"],
+    queryFn: () =>
+      api.get<Warehouse[]>("/api/v1/warehouses?is_active=true"),
     enabled: open,
   });
 

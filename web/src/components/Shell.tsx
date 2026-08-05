@@ -64,7 +64,17 @@ interface NavItem {
 const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Overview",
-    items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard }],
+    // Gated, unlike before: every figure on it comes from the stock endpoints.
+    // A customer account is refused all three, so an ungated Dashboard offered
+    // them a screen of em dashes as the first thing they saw.
+    items: [
+      {
+        to: "/",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        permission: "stock.view",
+      },
+    ],
   },
   {
     section: "Inventory",

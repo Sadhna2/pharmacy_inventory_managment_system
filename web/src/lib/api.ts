@@ -122,9 +122,56 @@ async function request<T>(
   return parsed as T;
 }
 
+/**
+ * A GET whose body is not JSON — at present only the printable tax invoice.
+ *
+ * It exists because `window.open("/api/v1/...")` cannot work: a top-level
+ * navigation carries no Authorization header, so the new tab renders a 401
+ * every time. The document has to be fetched like any other authenticated
+ * request and then handed to the browser.
+ *
+ * Deliberately not folded into `request`, which parses JSON unconditionally
+ * and would throw on the first `<`.
+ */
+async function getText(path: string, isRetry = false): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+  const res = await fetch(path, { headers, credentials: "include" });
+
+  if (res.status === 401 && !isRetry) {
+    if (await refreshAccessToken()) return getText(path, true);
+    onAuthLost?.();
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    // An error here is problem+json even though success is HTML, but a proxy
+    // or gateway can still return a plain HTML error page — so parsing is
+    // allowed to fail without masking the real status.
+    let parsed = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    throw new ApiError(
+      res.status,
+      parsed ?? {
+        type: "about:blank",
+        title: "Request failed",
+        status: res.status,
+        detail: res.statusText,
+      },
+    );
+  }
+  return text;
+}
+
 export const api = {
   get: <T>(path: string, signal?: AbortSignal) =>
     request<T>(path, { signal }),
+  getText,
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body }),
   patch: <T>(path: string, body?: unknown) =>

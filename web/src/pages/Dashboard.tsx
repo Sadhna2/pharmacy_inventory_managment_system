@@ -8,12 +8,19 @@ import {
   ShieldAlert,
   Truck,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn, moneyShort, num, qty, relativeDays } from "@/lib/format";
 import type { ExpiringStock, Movement, Page, StockSummary } from "@/lib/types";
 import { PageHeader } from "@/components/Shell";
-import { Badge, Card, CardHeader, EmptyState, Spinner } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  Spinner,
+} from "@/components/ui";
 
 function Tile({
   label,
@@ -97,6 +104,20 @@ export function Dashboard() {
         }
       />
 
+      {/* The tiles below print an em dash when `data` is missing, which is at
+          least not a false zero — but on its own it looks like the chain holds
+          no stock. This says which it is. It matters most for the CUSTOMER
+          role, whose account is refused all three of these reads: without it
+          their landing page is a wall of dashes and two cheerful empty states
+          claiming nothing is expiring and nothing has moved. */}
+      {summary.error && (
+        <div className="mt-4 rounded-xl border border-danger/20 bg-danger-soft px-4 py-3 text-[13px] text-ink-soft">
+          {summary.error instanceof ApiError && summary.error.status === 403
+            ? "Your role does not include the chain-wide stock figures, so the totals below are blank."
+            : "The stock totals could not be loaded, so the figures below are blank."}
+        </div>
+      )}
+
       {/* ------------------------------------------------------------ tiles */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Tile
@@ -179,10 +200,12 @@ export function Dashboard() {
               </Link>
             }
           />
-          {expiring.isLoading ? (
+          {expiring.isPending ? (
             <div className="flex justify-center py-10">
               <Spinner />
             </div>
+          ) : expiring.error ? (
+            <ErrorState error={expiring.error} onRetry={expiring.refetch} />
           ) : !expiring.data?.length ? (
             <EmptyState
               icon={CalendarClock}
@@ -232,10 +255,12 @@ export function Dashboard() {
             title="Recent activity"
             description="Every movement, immutably logged"
           />
-          {recent.isLoading ? (
+          {recent.isPending ? (
             <div className="flex justify-center py-10">
               <Spinner />
             </div>
+          ) : recent.error ? (
+            <ErrorState error={recent.error} onRetry={recent.refetch} />
           ) : !recent.data?.items.length ? (
             <EmptyState icon={Package} title="No movements yet" />
           ) : (

@@ -10,7 +10,7 @@
 import { Fragment, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import { cn } from "@/lib/format";
-import { Button, EmptyState, TableSkeleton } from "./ui";
+import { Button, EmptyState, ErrorState, TableSkeleton } from "./ui";
 
 export interface Column<T> {
   key: string;
@@ -35,7 +35,29 @@ interface DataTableProps<T> {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string | number;
+  /**
+   * True until the query has produced *something* — data or an error.
+   *
+   * Pass React Query's `isPending`, not `isLoading`. They differ exactly where
+   * it matters: between a failed attempt and its retry, `isLoading` is false
+   * because no request is in flight, while `error` is still null because the
+   * query has not given up. Both falsy means this component falls through to
+   * its empty state and tells the user there is nothing to see — during a
+   * retry, and indefinitely if the retry is paused because the tab is in the
+   * background. `isPending` stays true across the whole gap.
+   */
   loading?: boolean;
+  /**
+   * Whatever the query failed with, if it did.
+   *
+   * Without this the table falls straight through to its empty state, and a
+   * screen that could not reach the server says "No purchase orders" — which
+   * is a statement about the business, not about the network. Every list here
+   * passes it; the prop is optional only so a table fed from local state does
+   * not have to invent one.
+   */
+  error?: unknown;
+  onRetry?: () => void;
   onRowClick?: (row: T) => void;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -58,6 +80,8 @@ export function DataTable<T>({
   rows,
   rowKey,
   loading,
+  error,
+  onRetry,
   onRowClick,
   emptyTitle = "Nothing here yet",
   emptyDescription,
@@ -68,6 +92,10 @@ export function DataTable<T>({
   onPageChange,
 }: DataTableProps<T>) {
   if (loading) return <TableSkeleton />;
+
+  // Before the empty state, always: an error and an empty result are the two
+  // things this component must never conflate.
+  if (error) return <ErrorState error={error} onRetry={onRetry} />;
 
   if (rows.length === 0) {
     return (

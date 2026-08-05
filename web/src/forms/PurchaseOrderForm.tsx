@@ -37,13 +37,15 @@ export function PurchaseOrderForm({
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
 
   const suppliers = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: () => api.get<Supplier[]>("/api/v1/suppliers"),
+    queryKey: ["suppliers", "active"],
+    queryFn: () =>
+      api.get<Supplier[]>("/api/v1/suppliers?is_active=true"),
     enabled: open,
   });
   const warehouses = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
+    queryKey: ["warehouses", "active"],
+    queryFn: () =>
+      api.get<Warehouse[]>("/api/v1/warehouses?is_active=true"),
     enabled: open,
   });
 

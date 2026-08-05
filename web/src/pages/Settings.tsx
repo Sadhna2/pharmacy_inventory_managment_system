@@ -192,7 +192,7 @@ export function Settings() {
   const [resetting, setResetting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api.get<AppSettings>("/api/v1/settings"),
   });
@@ -295,9 +295,15 @@ export function Settings() {
         </div>
       )}
 
-      {isLoading ? (
+      {isPending ? (
         <Card>
           <TableSkeleton rows={8} />
+        </Card>
+      ) : error ? (
+        // Settings decides what the rest of the product may do, so a screen
+        // that failed to load them must not render as "everything is off".
+        <Card>
+          <ErrorState error={error} onRetry={refetch} />
         </Card>
       ) : (
         <div className="space-y-4">

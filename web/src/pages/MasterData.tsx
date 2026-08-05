@@ -84,7 +84,15 @@ export function MasterData() {
   const [params, setParams] = useSearchParams();
   const [showRetired, setShowRetired] = useState(false);
 
-  const tab = (params.get("tab") as TabKey) || "suppliers";
+  // Checked against the real list, not cast. `?tab=` comes off the URL bar,
+  // which means it comes from anywhere — a stale bookmark, a typo, a link
+  // someone edited by hand. Casting an unknown string to TabKey satisfies the
+  // compiler and then indexes the lookup below with a key that isn't there,
+  // so `active` is undefined and reading `active.columns` throws mid-render.
+  // A bad query string should land on the default tab, not blank the app.
+  const requested = params.get("tab");
+  const tab: TabKey =
+    TABS.find((t) => t.key === requested)?.key ?? "suppliers";
   const manage = can("master.manage");
 
   // One dialog serves all three tabs; the path is built from the active one.
@@ -657,7 +665,9 @@ export function MasterData() {
           columns={active.columns as Column<never>[]}
           rows={(active.query.data ?? []) as never[]}
           rowKey={(row) => (row as Retirable).id}
-          loading={active.query.isLoading}
+          loading={active.query.isPending}
+          error={active.query.error}
+          onRetry={active.query.refetch}
           emptyTitle={active.empty}
           emptyDescription="Add one to start referring to it on documents."
         />
