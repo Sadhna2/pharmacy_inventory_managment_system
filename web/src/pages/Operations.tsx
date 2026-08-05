@@ -6,7 +6,9 @@ import {
   Check,
   PackageCheck,
   Plus,
+  ScanLine,
   Send,
+  ShieldCheck,
   Truck,
 } from "lucide-react";
 import { api, ApiError, qs } from "@/lib/api";
@@ -228,6 +230,65 @@ export function PurchaseOrders() {
           </>
         }
       />
+      {/*
+        The one place in the product where a language model does the work, said
+        out loud in the section that owns it.
+
+        It lived as a line of grey text inside the receive-goods dialog, which
+        meant nobody met the feature until they had already decided to use it.
+        The alternative — a page of its own explaining "our AI" — was worse: a
+        tour that sits away from the work is a brochure, and the claim only
+        carries weight standing next to the form it fills in. So it is stated
+        here, one click from the thing it does.
+
+        Gated on grn.create, the same permission the intake endpoint demands,
+        so this never advertises a button that would be refused.
+      */}
+      {can("grn.create") && (
+        <Card className="mb-3 border-brand/25 bg-brand-soft/40 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <ScanLine className="mt-0.5 size-5 shrink-0 text-brand" />
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-medium text-ink">
+                    Read a distributor&rsquo;s invoice
+                  </h2>
+                  <Badge tone="brand">AI — vision + language</Badge>
+                </div>
+                <p className="text-[13px] leading-relaxed text-ink-soft">
+                  Photograph the invoice and the batch codes, expiries,
+                  quantities and rates fill in the goods receipt — including
+                  trade names no rule can reach, like OMEZ-20 for omeprazole.
+                </p>
+                {/*
+                  The part that matters more than the feature: what stops it
+                  being believed on trust. An invoice is over-determined, so a
+                  misreading is caught by arithmetic rather than by somebody
+                  noticing.
+                */}
+                <p className="flex gap-1.5 text-xs leading-relaxed text-ink-soft">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-ok" />
+                  <span>
+                    The model never produces an answer, only something that can
+                    be checked — every reading is tested against the
+                    invoice&rsquo;s own arithmetic and its GSTIN checksum, and
+                    nothing reaches the ledger until a person accepts it.
+                  </span>
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              className="shrink-0"
+              onClick={() => setGrnOpen(true)}
+            >
+              <ScanLine className="size-4" /> Scan an invoice
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <ErrorBanner message={action.error} />
         <DataTable
