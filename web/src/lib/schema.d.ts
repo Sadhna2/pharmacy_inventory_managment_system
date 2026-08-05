@@ -968,6 +968,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sales-orders/suggested-price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggested Price
+         * @description The price to offer for this customer and product, before anyone types.
+         *
+         *     Declared above `/{so_id}` because FastAPI matches in order and would
+         *     otherwise try to read "suggested-price" as an order id.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → New order
+         *
+         *     The price this customer was last charged for this product, falling back to MRP. Fills the price box so an institutional buyer is not quietly invoiced at list price.
+         */
+        get: operations["suggested_price_api_v1_sales_orders_suggested_price_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales-orders/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Sales Order
+         * @description Which branches, together, could supply this — before anything is raised.
+         *
+         *     A POST because it carries a body, not because it changes anything: this
+         *     writes nothing, reserves nothing, and holds no stock. Between reading a
+         *     plan and acting on it the shelf can move, so each order it proposes is
+         *     still raised through `POST /sales-orders` and still met by every check
+         *     that route already applies.
+         *
+         *     `so.create` rather than `so.view`. It answers a question only somebody
+         *     about to raise an order needs answered, and it reports stock levels across
+         *     every branch the caller can see — a thinner permission would make it a way
+         *     to read the chain's stock position sideways.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → New order
+         *
+         *     Given a customer and the products they want, works out which branches could supply them and proposes one ordinary order per branch. Writes nothing and reserves nothing — each proposed order is still raised through POST /sales-orders.
+         */
+        post: operations["plan_sales_order_api_v1_sales_orders_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sales-orders/{so_id}": {
         parameters: {
             query?: never;
@@ -2070,6 +2136,29 @@ export interface components {
             quantity: string;
             /** Mrp */
             mrp?: string | null;
+        };
+        /**
+         * AlternativeOut
+         * @description Another branch that could take this order's lines in full instead.
+         *
+         *     Its own split and total, because shipping the same lines from another
+         *     state turns CGST + SGST into IGST.
+         */
+        AlternativeOut: {
+            /** Warehouse Id */
+            warehouse_id: number;
+            /** Warehouse Name */
+            warehouse_name: string;
+            /** State Code */
+            state_code: string;
+            /** Is Interstate */
+            is_interstate: boolean;
+            /** Subtotal */
+            subtotal: string;
+            /** Tax Total */
+            tax_total: string;
+            /** Grand Total */
+            grand_total: string;
         };
         /** AnomalyOut */
         AnomalyOut: {
@@ -3399,6 +3488,46 @@ export interface components {
             /** New Password */
             new_password: string;
         };
+        /** PlannedLineOut */
+        PlannedLineOut: {
+            /** Product Id */
+            product_id: number;
+            /** Product Name */
+            product_name: string;
+            /** Sku */
+            sku: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit Price */
+            unit_price: string;
+        };
+        /**
+         * PlannedOrderOut
+         * @description One branch's share — everything `POST /sales-orders` needs to raise it.
+         */
+        PlannedOrderOut: {
+            /** Warehouse Id */
+            warehouse_id: number;
+            /** Warehouse Name */
+            warehouse_name: string;
+            /** State Code */
+            state_code: string;
+            /** Is Interstate */
+            is_interstate: boolean;
+            /** Lines */
+            lines: components["schemas"]["PlannedLineOut"][];
+            /** Subtotal */
+            subtotal: string;
+            /** Tax Total */
+            tax_total: string;
+            /** Grand Total */
+            grand_total: string;
+            /**
+             * Alternatives
+             * @default []
+             */
+            alternatives: components["schemas"]["AlternativeOut"][];
+        };
         /**
          * ProductIn
          * @example {
@@ -4036,6 +4165,39 @@ export interface components {
              */
             lines: components["schemas"]["SOLineOut"][];
         };
+        /**
+         * SalesOrderPlanIn
+         * @description A request to be planned, with no warehouse named — that is the answer.
+         * @example {
+         *       "customer_id": 1,
+         *       "lines": [
+         *         {
+         *           "product_id": 4,
+         *           "qty_ordered": 500
+         *         },
+         *         {
+         *           "product_id": 6,
+         *           "qty_ordered": 200
+         *         }
+         *       ]
+         *     }
+         */
+        SalesOrderPlanIn: {
+            /** Customer Id */
+            customer_id: number;
+            /** Lines */
+            lines: components["schemas"]["SOLineIn"][];
+        };
+        /**
+         * SalesOrderPlanOut
+         * @description Nothing here has been written. Each order still has to be raised.
+         */
+        SalesOrderPlanOut: {
+            /** Orders */
+            orders: components["schemas"]["PlannedOrderOut"][];
+            /** Shortfalls */
+            shortfalls: components["schemas"]["ShortfallOut"][];
+        };
         /** SettingsGroupOut */
         SettingsGroupOut: {
             /** Key */
@@ -4096,6 +4258,20 @@ export interface components {
              * @default []
              */
             lines: components["schemas"]["AllocationOut"][];
+        };
+        /**
+         * ShortfallOut
+         * @description What the chain cannot cover, said plainly rather than left implicit.
+         */
+        ShortfallOut: {
+            /** Product Id */
+            product_id: number;
+            /** Product Name */
+            product_name: string;
+            /** Requested */
+            requested: string;
+            /** Planned */
+            planned: string;
         };
         /** SourcingOut */
         SourcingOut: {
@@ -4177,6 +4353,27 @@ export interface components {
          * @enum {string}
          */
         StorageCondition: "AMBIENT" | "COOL" | "COLD_CHAIN" | "FROZEN";
+        /**
+         * SuggestedPriceOut
+         * @description What to put in the price box before anyone types, and where it came from.
+         *
+         *     `source` is part of the answer, not decoration: "the price you charged them
+         *     last time" and "the list price we have never sold at" deserve different
+         *     amounts of trust from whoever is about to accept the number.
+         */
+        SuggestedPriceOut: {
+            /** Product Id */
+            product_id: number;
+            /** Unit Price */
+            unit_price: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "last_charged" | "mrp" | "none";
+            /** Last Charged On */
+            last_charged_on?: string | null;
+        };
         /** SupplierDeliveryOut */
         SupplierDeliveryOut: {
             /** Po Id */
@@ -6305,6 +6502,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SalesOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggested_price_api_v1_sales_orders_suggested_price_get: {
+        parameters: {
+            query: {
+                customer_id: number;
+                product_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestedPriceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_sales_order_api_v1_sales_orders_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesOrderPlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderPlanOut"];
                 };
             };
             /** @description Validation Error */

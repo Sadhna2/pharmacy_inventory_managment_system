@@ -46,6 +46,9 @@ from app.schemas.documents import (
     RecallOut,
     SalesOrderIn,
     SalesOrderOut,
+    SalesOrderPlanIn,
+    SalesOrderPlanOut,
+    SuggestedPriceOut,
     ShipmentOut,
     TransferIn,
     TransferOut,
@@ -385,6 +388,58 @@ def create_sales_order(
                  entity_id=so.id, actor_user_id=user.id)
     db.refresh(so)
     return _so_out(so)
+
+
+@so_router.get("/suggested-price", response_model=SuggestedPriceOut)
+def suggested_price(
+    customer_id: int,
+    product_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("so.create")),
+) -> SuggestedPriceOut:
+    """The price to offer for this customer and product, before anyone types.
+
+    Declared above `/{so_id}` because FastAPI matches in order and would
+    otherwise try to read "suggested-price" as an order id.
+    """
+    return SuggestedPriceOut(
+        **asdict(
+            sales.suggest_price(
+                db, customer_id=customer_id, product_id=product_id
+            )
+        )
+    )
+
+
+@so_router.post("/plan", response_model=SalesOrderPlanOut)
+def plan_sales_order(
+    payload: SalesOrderPlanIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("so.create")),
+) -> SalesOrderPlanOut:
+    """Which branches, together, could supply this — before anything is raised.
+
+    A POST because it carries a body, not because it changes anything: this
+    writes nothing, reserves nothing, and holds no stock. Between reading a
+    plan and acting on it the shelf can move, so each order it proposes is
+    still raised through `POST /sales-orders` and still met by every check
+    that route already applies.
+
+    `so.create` rather than `so.view`. It answers a question only somebody
+    about to raise an order needs answered, and it reports stock levels across
+    every branch the caller can see — a thinner permission would make it a way
+    to read the chain's stock position sideways.
+    """
+    plan = sales.plan_fulfilment(
+        db,
+        customer_id=payload.customer_id,
+        lines=[line.model_dump() for line in payload.lines],
+        # The same scope as every list on this router. A branch user is
+        # offered their own branch and no other, so a plan can never propose
+        # raising an order somewhere they are not allowed to look.
+        warehouse_ids=scoped_warehouse_ids(user),
+    )
+    return SalesOrderPlanOut(**asdict(plan))
 
 
 @so_router.get("/{so_id}", response_model=SalesOrderOut)

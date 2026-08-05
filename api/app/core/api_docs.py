@@ -175,6 +175,19 @@ USED_BY: dict[str, tuple[str, str]] = {
         "Raises an order. Nothing leaves stock yet — allocation is a separate, "
         "deliberate step.",
     ),
+    "GET /api/v1/sales-orders/suggested-price": (
+        "Operations → Sales → New order",
+        "The price this customer was last charged for this product, falling "
+        "back to MRP. Fills the price box so an institutional buyer is not "
+        "quietly invoiced at list price.",
+    ),
+    "POST /api/v1/sales-orders/plan": (
+        "Operations → Sales → New order",
+        "Given a customer and the products they want, works out which branches "
+        "could supply them and proposes one ordinary order per branch. Writes "
+        "nothing and reserves nothing — each proposed order is still raised "
+        "through POST /sales-orders.",
+    ),
     "GET /api/v1/sales-orders/{so_id}": (
         "Operations → Sales → row",
         "One order with its lines, allocations and shipments.",

@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -254,6 +255,94 @@ class SalesOrderIn(BaseModel):
     order_date: date | None = None
     notes: str | None = None
     lines: list[SOLineIn] = Field(min_length=1)
+
+
+class SalesOrderPlanIn(BaseModel):
+    """A request to be planned, with no warehouse named — that is the answer."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {
+            "customer_id": 1,
+            "lines": [
+                    {"product_id": 4, "qty_ordered": 500},
+                    {"product_id": 6, "qty_ordered": 200}
+            ]
+    }})
+
+    customer_id: int
+    lines: list[SOLineIn] = Field(min_length=1)
+
+
+class SuggestedPriceOut(BaseModel):
+    """What to put in the price box before anyone types, and where it came from.
+
+    `source` is part of the answer, not decoration: "the price you charged them
+    last time" and "the list price we have never sold at" deserve different
+    amounts of trust from whoever is about to accept the number.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    product_id: int
+    unit_price: Decimal
+    source: Literal["last_charged", "mrp", "none"]
+    last_charged_on: date | None = None
+
+
+class PlannedLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    product_id: int
+    product_name: str
+    sku: str
+    quantity: Decimal
+    unit_price: Decimal
+
+
+class AlternativeOut(BaseModel):
+    """Another branch that could take this order's lines in full instead.
+
+    Its own split and total, because shipping the same lines from another
+    state turns CGST + SGST into IGST.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    warehouse_id: int
+    warehouse_name: str
+    state_code: str
+    is_interstate: bool
+    subtotal: Decimal
+    tax_total: Decimal
+    grand_total: Decimal
+
+
+class PlannedOrderOut(BaseModel):
+    """One branch's share — everything `POST /sales-orders` needs to raise it."""
+
+    model_config = ConfigDict(from_attributes=True)
+    warehouse_id: int
+    warehouse_name: str
+    state_code: str
+    is_interstate: bool
+    lines: list[PlannedLineOut]
+    subtotal: Decimal
+    tax_total: Decimal
+    grand_total: Decimal
+    alternatives: list[AlternativeOut] = []
+
+
+class ShortfallOut(BaseModel):
+    """What the chain cannot cover, said plainly rather than left implicit."""
+
+    model_config = ConfigDict(from_attributes=True)
+    product_id: int
+    product_name: str
+    requested: Decimal
+    planned: Decimal
+
+
+class SalesOrderPlanOut(BaseModel):
+    """Nothing here has been written. Each order still has to be raised."""
+
+    orders: list[PlannedOrderOut]
+    shortfalls: list[ShortfallOut]
 
 
 class SalesOrderOut(DocumentTotalsOut):
