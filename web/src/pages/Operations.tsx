@@ -105,8 +105,9 @@ function raisedByColumn<T extends {
     header: "Raised by",
     hideBelow: "md",
     card: "secondary",
-    // Two short names. Left to share the spare width it opened a gap between
-    // itself and Status wide enough that the two stopped reading as one row.
+    // Two short names, and Purchasing does not pack its columns — left to
+    // share the spare width there it opened a gap between itself and Status
+    // wide enough that the two stopped reading as one row.
     shrink: true,
     render: (row) => (
       <RaisedBy
@@ -262,9 +263,7 @@ export function PurchaseOrders() {
       key: "status",
       header: "Status",
       card: "secondary",
-      // A badge is as wide as its word. Sharing the spare width put a corridor
-      // of dead space between it and the column before it on every one of
-      // these four tables.
+      // A badge is as wide as its word, and this table shares its width out.
       shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
@@ -590,10 +589,6 @@ export function SalesOrders() {
       key: "status",
       header: "Status",
       card: "secondary",
-      // A badge is as wide as its word. Sharing the spare width put a corridor
-      // of dead space between it and the column before it on every one of
-      // these four tables.
-      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
@@ -635,6 +630,7 @@ export function SalesOrders() {
       <Card>
         <ErrorBanner message={action.error} />
         <DataTable
+        even
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
@@ -694,14 +690,23 @@ export function SalesOrders() {
                   <Send className="size-4" /> Ship
                 </Button>
               )}
-              {/* A read, not a workflow step, so it stays available on a
-                  shipped or completed order — a reprint is usually asked for
-                  long after the goods have gone. Hidden on a DRAFT: nothing is
-                  held for it yet and its lines can still change, so anything
-                  printed now is a document that may not survive the morning.
-                  No permission check because the list itself needs `so.view`,
-                  which is all the endpoint asks for. */}
-              {acting.status !== "DRAFT" && (
+              {/* SHIPPED or COMPLETED, which is exactly what the route's
+                  INVOICEABLE allows — the button used to appear on everything
+                  except a DRAFT, so a cancelled or merely allocated order
+                  offered a print that the server then refused. An action that
+                  cannot succeed should not be on the screen.
+
+                  It is also the right rule and not just the matching one: a
+                  tax invoice is raised against a supply that happened. A
+                  cancelled order is not a supply, and printing one would be
+                  claiming a sale that never took place.
+
+                  A read rather than a workflow step, so it stays available for
+                  good once the goods have gone — a reprint is usually asked
+                  for long afterwards. No permission check because the list
+                  itself needs `so.view`, which is all the endpoint asks for. */}
+              {(acting.status === "SHIPPED" ||
+                acting.status === "COMPLETED") && (
                 <Button
                   onClick={() => {
                     // The window is opened synchronously, inside the click, and
@@ -866,6 +871,7 @@ export function Transfers() {
     {
       key: "route",
       header: "Route",
+      width: "34%",
       card: "secondary",
       render: (row) => (
         <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-ink-soft">
@@ -888,10 +894,6 @@ export function Transfers() {
       key: "status",
       header: "Status",
       card: "secondary",
-      // A badge is as wide as its word. Sharing the spare width put a corridor
-      // of dead space between it and the column before it on every one of
-      // these four tables.
-      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
@@ -924,6 +926,7 @@ export function Transfers() {
       <Card>
         <ErrorBanner message={action.error} />
         <DataTable
+        even
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
@@ -967,64 +970,70 @@ export function Transfers() {
               Presented as one button each rather than a row of three, so the
               next step is unambiguous.
             */}
-            {/* DRAFT only, as the server has it. A transfer never takes
-                PENDING_APPROVAL — DRAFT, APPROVED, IN_TRANSIT, COMPLETED and
-                CANCELLED are the whole set — so widening this changed the
-                logic to cover a state that cannot happen. */}
-            {acting.status === "DRAFT" && can("transfer.approve") && (
+            {/* Centred, and on one line. Left-aligned they sat against the
+                edge of a sheet whose every other element is a full-width row,
+                which read as unfinished rather than deliberate. */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {/* DRAFT only, as the server has it. A transfer never takes
+                  PENDING_APPROVAL — DRAFT, APPROVED, IN_TRANSIT, COMPLETED and
+                  CANCELLED are the whole set — so widening this changed the
+                  logic to cover a state that cannot happen. */}
+              {acting.status === "DRAFT" && can("transfer.approve") && (
+                  <Button
+                    variant="primary"
+                    loading={action.isPending}
+                    onClick={() => {
+                      action.mutate({
+                        path: `/api/v1/transfers/${acting.id}/approve`,
+                      });
+                      setActing(null);
+                    }}
+                  >
+                    <Check className="size-4" /> Approve transfer
+                  </Button>
+                )}
+              {acting.status === "APPROVED" && can("transfer.approve") && (
                 <Button
                   variant="primary"
                   loading={action.isPending}
                   onClick={() => {
-                    action.mutate({
-                      path: `/api/v1/transfers/${acting.id}/approve`,
-                    });
+                    action.mutate({ path: `/api/v1/transfers/${acting.id}/dispatch` });
                     setActing(null);
                   }}
                 >
-                  <Check className="size-4" /> Approve transfer
+                  <Truck className="size-4" /> Dispatch
                 </Button>
               )}
-            {acting.status === "APPROVED" && can("transfer.approve") && (
-              <Button
-                variant="primary"
-                loading={action.isPending}
-                onClick={() => {
-                  action.mutate({ path: `/api/v1/transfers/${acting.id}/dispatch` });
-                  setActing(null);
-                }}
-              >
-                <Truck className="size-4" /> Dispatch
-              </Button>
-            )}
-            {acting.status === "IN_TRANSIT" && can("stock.move") && (
-              <Button
-                variant="primary"
-                loading={action.isPending}
-                onClick={() => {
-                  action.mutate({ path: `/api/v1/transfers/${acting.id}/receive` });
-                  setActing(null);
-                }}
-              >
-                <PackageCheck className="size-4" /> Receive at destination
-              </Button>
-            )}
-            {/* Before it ships, and only before: once the stock is on a road
-                the transfer has to land somewhere, and the API refuses. */}
-            {can("transfer.create") &&
-              (acting.status === "DRAFT" ||
-                acting.status === "PENDING_APPROVAL" ||
-                acting.status === "APPROVED") && (
+              {acting.status === "IN_TRANSIT" && can("stock.move") && (
                 <Button
+                  variant="primary"
+                  loading={action.isPending}
                   onClick={() => {
-                    const row = acting;
+                    action.mutate({ path: `/api/v1/transfers/${acting.id}/receive` });
                     setActing(null);
-                    setCancelling(row);
                   }}
                 >
-                  <Ban className="size-4" /> Cancel transfer
+                  <PackageCheck className="size-4" /> Receive at destination
                 </Button>
               )}
+              {/* Before it ships, and only before: once the stock is on a road
+                  the transfer has to land somewhere, and the API refuses. */}
+              {can("transfer.create") &&
+                (acting.status === "DRAFT" ||
+                  acting.status === "PENDING_APPROVAL" ||
+                  acting.status === "APPROVED") && (
+                  <Button
+                    onClick={() => {
+                      const row = acting;
+                      setActing(null);
+                      setCancelling(row);
+                    }}
+                  >
+                    <Ban className="size-4" /> Cancel transfer
+                  </Button>
+                )}
+            </div>
+
             {/* COMPLETED, not RECEIVED — `receive_transfer` sets COMPLETED, so
                 this line was guarded on a status transfers never reach and a
                 finished transfer opened a sheet with nothing in it at all. */}
@@ -1122,10 +1131,6 @@ export function Adjustments() {
       key: "status",
       header: "Status",
       card: "secondary",
-      // A badge is as wide as its word. Sharing the spare width put a corridor
-      // of dead space between it and the column before it on every one of
-      // these four tables.
-      shrink: true,
       render: (row) => <StatusBadge status={row.status} />,
     },
     {
@@ -1158,6 +1163,7 @@ export function Adjustments() {
       <Card>
         <ErrorBanner message={action.error} />
         <DataTable
+        even
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}

@@ -32,28 +32,39 @@ export interface Column<T> {
   /**
    * Hug the content instead of taking a share of the spare width.
    *
-   * A `w-full` table with no widths hands every column an equal slice of
-   * whatever is left over, so a status badge and a row menu each got as much
-   * room as a document reference and the table grew a corridor of dead space
-   * in the middle — most visibly between the last text column and Status.
+   * A `w-full` table with no widths hands every column a slice of whatever is
+   * left over, so a status badge and a row menu each got as much room as a
+   * document reference and the table grew a corridor of dead space in the
+   * middle — most visibly between the last text column and Status.
    *
    * `1%` rather than `0`: it is the smallest width a browser will honour while
    * still expanding the cell to fit its content, which is exactly the rule
-   * wanted here. Numeric columns get this automatically — a figure never needs
+   * wanted here. Numeric columns get this by default — a figure never needs
    * slack — and anything else that should hug asks for it.
    */
   shrink?: boolean;
 }
 
-/** Does this column hug its content rather than share the spare width? */
-function hugs<T>(col: Column<T>): boolean {
-  return col.shrink ?? Boolean(col.numeric);
+/**
+ * Does this column hug its content rather than share the spare width?
+ *
+ * Never under `even`: there the browser is dividing the width itself and any
+ * per-column instruction only gets in its way.
+ */
+function hugs<T>(col: Column<T>, even: boolean): boolean {
+  return even ? false : (col.shrink ?? Boolean(col.numeric));
 }
 
 /** An explicit width wins; otherwise a hugging column asks for the minimum. */
-function colWidth<T>(col: Column<T>): { width: string } | undefined {
+function colWidth<T>(
+  col: Column<T>,
+  even: boolean,
+): { width: string } | undefined {
+  // A width still wins under `even`. `table-fixed` splits what is left over
+  // equally between the columns that did not ask, so one column saying it
+  // needs more does not stop the others being a regular grid.
   if (col.width) return { width: col.width };
-  return hugs(col) ? { width: "1%" } : undefined;
+  return !even && hugs(col, even) ? { width: "1%" } : undefined;
 }
 
 interface DataTableProps<T> {
@@ -72,6 +83,22 @@ interface DataTableProps<T> {
    * background. `isPending` stays true across the whole gap.
    */
   loading?: boolean;
+  /**
+   * One width, divided equally between the columns.
+   *
+   * Spare width has to go somewhere, and every way of deciding where put it
+   * somewhere that looked wrong: shared in proportion to content it opened a
+   * corridor before Status; named as percentages it scaled with the viewport,
+   * so a 10-character reference sat in a cell four times its own width; given
+   * wholly to the trailing actions column it packed everything hard left.
+   *
+   * So this stops choosing. `table-fixed` with no widths at all gives every
+   * column exactly the same share, which is the one arrangement that cannot
+   * favour a column — a plain, regular grid, the same at every window width.
+   * Cells that outgrow their share wrap, which is why the crowded tables (nine
+   * columns, long warehouse names) are left on the automatic layout instead.
+   */
+  even?: boolean;
   /**
    * Whatever the query failed with, if it did.
    *
@@ -105,6 +132,7 @@ export function DataTable<T>({
   rows,
   rowKey,
   loading,
+  even = false,
   error,
   onRetry,
   onRowClick,
@@ -142,17 +170,22 @@ export function DataTable<T>({
     <div>
       {/* ------------------------------------------------ desktop: real table */}
       <div className="scroll-x hidden md:block">
-        <table className="w-full border-collapse text-sm">
+        <table
+          className={cn(
+            "w-full border-collapse text-sm",
+            even && "table-fixed",
+          )}
+        >
           <thead>
             <tr className="border-b border-line">
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  style={colWidth(col)}
+                  style={colWidth(col, even)}
                   className={cn(
                     "px-4 py-2.5 text-[11px] font-semibold tracking-wide text-ink-faint uppercase",
                     col.numeric ? "text-right" : "text-left",
-                    hugs(col) && "whitespace-nowrap",
+                    hugs(col, even) && "whitespace-nowrap",
                     col.hideBelow && HIDE_CLASSES[col.hideBelow],
                   )}
                 >
@@ -177,7 +210,7 @@ export function DataTable<T>({
                     className={cn(
                       "px-4 py-3 align-middle",
                       col.numeric && "text-right tnum",
-                      hugs(col) && "whitespace-nowrap",
+                      hugs(col, even) && "whitespace-nowrap",
                       col.hideBelow && HIDE_CLASSES[col.hideBelow],
                     )}
                   >
