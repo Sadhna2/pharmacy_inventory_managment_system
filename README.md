@@ -7,7 +7,7 @@ deleted, and every balance you see is derived from it.
 **Status:** Layer 0 (spine), Layer 1 (operations), five of the six Layer 2
 analysis features and **invoice intake** are complete and verified, along with
 an administrator settings screen that makes every AI threshold and feature
-switch tunable at runtime. 273 tests, most of them end-to-end against a live
+switch tunable at runtime. 290 tests, most of them end-to-end against a live
 server and a real Postgres.
 
 Invoice intake photographs a distributor's invoice and fills in the goods
@@ -182,6 +182,12 @@ omeprazole) is a *second* model call and is not recorded, so offline it returns
 nothing and those lines come back for a human to pick. Nothing breaks; fewer
 rows fill themselves in.
 
+There is also an administrator switch — **Setup → Settings → Invoice scanning**
+— and it is enforced on the server, not merely hidden in the interface. Turn it
+off and the intake routes answer `404`, so a stale tab or a known URL cannot
+keep spending the extraction budget. If the callout has vanished from
+Purchasing and the endpoint 404s, check that switch before checking your key.
+
 ### Tests
 
 ```bash
@@ -286,7 +292,8 @@ not the other. That is `stock.view_cost` as a *permission*, not a role.
    *Partially received* with the arithmetic on the row — `4 of 10` — rather
    than a status word with nothing behind it. Try receiving it into the wrong
    branch and the server refuses.
-5. **Receive goods → Scan invoice.** Photograph a distributor's invoice and
+5. **Purchasing → Scan an invoice** (the callout at the top of the page; it is
+   also inside *Receive goods*). Photograph a distributor's invoice and
    fourteen lines of batch codes, expiries, quantities and rates fill
    themselves in. Then look at what it *says about itself*: `'OMEZ-20 CAP' read
    as 'Omeprazole 20mg'; check it against the carton` — the model named it, and
@@ -311,20 +318,24 @@ not the other. That is `stock.view_cost` as a *permission*, not a role.
    Nothing here moves stock. There is no code path from this endpoint to the
    ledger; it returns a proposal and a person presses the same button as before.
 6. **Stock.** Balances carry the full grain: product, location, bin, batch, status.
-7. **Analysis → Supplier lead times.** Apex Pharma Supply comes out *Erratic* —
-   7 days typically, 15 at worst, meeting its own promised date 49% of the time.
-   Open it: the percentiles are backed by the actual purchase orders they came from.
-8. **Analysis → Replenishment**, then open the syringe line. The safety stock is
-   ~2,900 units and the workings show why: almost all of it is the *supply*
-   variance term, i.e. that one distributor. Change supplier, and the branch
-   holds a fraction of the stock. That is the demo's money shot.
+7. **Analysis → Supplier lead times.** Gujarat Health Traders comes out
+   *Erratic* — 8 days typically, 15 at worst, meeting its own promised date
+   49% of the time, across 85 deliveries. Open it: the percentiles are backed
+   by the actual purchase orders they came from. Contrast MedPlus, which is
+   3 days median and 4 at p90.
+8. **Analysis → Replenishment**, then open the syringe line at Andheri. Safety
+   stock ~1,350 units against a reorder point of ~2,830, and the workings show
+   why: the lead time is 5 days give or take 2.7, so the *supply* variance term
+   dominates. Tighten that distributor's spread and the branch holds far less
+   stock for the same service level. That is the demo's money shot.
 9. **Raise draft order**, then reload. The suggestion does not come back — the
    draft is netted off. It is still only a DRAFT, and a second person has to
    approve it.
-10. **Analysis → Exceptions.** ~90 findings out of 52,000 movements, including a
-   3am adjustment and three unexplained count variances on the same controlled
-   drug at the same branch. Open one: it shows what it was measured against and
-   the ledger rows behind it.
+10. **Analysis → Exceptions.** ~25 findings over the last 90 days out of 53,000
+   movements, including a 3am adjustment and unexplained count variances on a
+   controlled drug. Open one: it shows what it was measured against and the
+   ledger rows behind it. The count moves with the sensitivity setting and with
+   the day you seeded, so treat it as an order of magnitude, not a fixture.
 11. **Analysis → Demand forecast.** Every series was backtested before it was
    shown — the table lists the methods that lost.
 12. Resize to a phone. Tables become card lists; the sidebar becomes a drawer.
@@ -343,7 +354,9 @@ api/     FastAPI + SQLAlchemy 2.x + Alembic. app/services/ledger.py is the only 
   app/core/     tunables.py declares every setting once; the API and UI both render from it.
 web/     React 19 + Vite + Tailwind v4 + TanStack Query.
 bench/   OCR benchmark harness — 50 generated distributor invoices and a scorer.
-docs/    Product guide: one page covering every screen, built from source + screenshots.
+docs/    SRS, architecture, ER diagram, project report, slides (.md and .pptx),
+         demo-video script, and the product guide — one page covering every
+         screen, built from source + screenshots.
 scripts/ db.sh — project-local Postgres control.
 ```
 
