@@ -444,16 +444,6 @@ def sales_order_invoice(
     user: User = Depends(require_permission("so.view")),
 ) -> HTMLResponse:
     """The order as a print-ready GST tax invoice, for the browser to print."""
-    if not settings.can_issue_tax_invoice:
-        # Refusing beats emitting a document captioned TAX INVOICE with the
-        # registration missing: the caption is the claim, and an invoice
-        # without the supplier's GSTIN is not one.
-        raise ConflictError(
-            "This system has no GSTIN configured for the selling firm, so it "
-            "cannot issue a tax invoice. Set SELLER_LEGAL_NAME and "
-            "SELLER_GSTIN."
-        )
-
     so = db.scalar(
         select(SalesOrder)
         .options(
@@ -477,6 +467,22 @@ def sales_order_invoice(
     # user could print the customer list of a branch they cannot otherwise see.
     if not in_scope(user, so.warehouse_id) or not customer_may_see(user, so):
         raise NotFoundError(f"Sales order {so_id} not found")
+
+    # After the 404, not before it. This is a fact about the server, and it was
+    # being announced to callers who are not allowed to know the order exists —
+    # an id out of range, or another branch's order, answered "configure your
+    # GSTIN" instead of "no such order". Whether the firm is registered is not
+    # something an unauthorised caller gets to learn, and a scope check that
+    # can be pre-empted by a config check is not reliably a scope check.
+    if not settings.can_issue_tax_invoice:
+        # Refusing beats emitting a document captioned TAX INVOICE with the
+        # registration missing: the caption is the claim, and an invoice
+        # without the supplier's GSTIN is not one.
+        raise ConflictError(
+            "This system has no GSTIN configured for the selling firm, so it "
+            "cannot issue a tax invoice. Set SELLER_LEGAL_NAME and "
+            "SELLER_GSTIN."
+        )
 
     if so.status not in INVOICEABLE:
         raise ConflictError(

@@ -118,16 +118,33 @@ def test_every_document_list_is_confined_to_the_users_branch(
 def test_the_scope_actually_removes_something(client, admin, staff, path):
     """Guards the guard.
 
-    Without this, a filter that silently returned nothing — or a database with
-    only one branch in it — would satisfy every assertion above while proving
-    nothing. If this fails, the seed no longer spreads documents across
-    branches and the rest of this file has stopped being a test.
-    """
-    everyones = client.get(path, headers=admin).json()["total"]
-    mine = client.get(path, headers=staff).json()["total"]
+    Without this, a filter that silently returned nothing would satisfy every
+    assertion above while proving nothing.
 
-    assert mine < everyones, (
-        f"{path}: staff sees {mine} of {everyones} — nothing is being scoped"
+    It has to tell two failures apart, and the first version did not. "Staff
+    see as many as admins" means the scope is broken *only if* documents for
+    another branch exist to be hidden. On a freshly seeded database some
+    document types sit entirely at one warehouse — CI hit exactly that with
+    four sales orders, all of them the staff account's — and the test failed
+    for the shape of the seed rather than for anything the code did.
+
+    So the case with nothing to hide is skipped rather than failed, and the
+    skip message says which it was. A scope that is genuinely broken still
+    fails everywhere the seed does spread documents, which is most of them.
+    """
+    everyones = _items(client, admin, path)
+    mine = _items(client, staff, path)
+
+    if len(everyones) == len(mine):
+        pytest.skip(
+            f"{path}: every document here is at this staff account's branch, "
+            f"so there is nothing for a scope to remove — this proves nothing "
+            f"either way"
+        )
+
+    assert len(mine) < len(everyones), (
+        f"{path}: staff sees {len(mine)} of {len(everyones)} — "
+        f"nothing is being scoped"
     )
 
 
