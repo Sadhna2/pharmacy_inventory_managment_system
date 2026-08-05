@@ -141,6 +141,9 @@ tests unless marked otherwise.
 | FR-OPS-9 | Adjustments require a second approver |
 | FR-OPS-10 | A batch can be recalled: stock freezes and every movement of it is traceable |
 | FR-OPS-11 | Document numbers are gap-free per series |
+| FR-OPS-12 | A sales order is checked against the customer's credit limit before it is accepted; a customer with no limit recorded is not constrained |
+| FR-OPS-13 | **The limit is enforced as open-order exposure** — the totals of that customer's orders raised and not yet completed or cancelled — which is not a receivable and does not outlive the order |
+| FR-OPS-14 | An order that would carry exposure past the limit is refused (422) naming the limit, the exposure already committed and the excess, with the headroom left attached to `customer_id` so the order form can state it against the field |
 
 ### 3.5 GST (FR-GST)
 
@@ -150,6 +153,12 @@ tests unless marked otherwise.
 | FR-GST-2 | The split is derived from supplier and warehouse state codes, not entered |
 | FR-GST-3 | Tax is computed per line and rounded per document |
 | FR-GST-4 | GSTIN is validated including its mod-36 check character |
+| FR-GST-5 | A sales order can be rendered as a **GST tax invoice**: the supplier's GSTIN from configuration, the buyer's as recorded, place of supply, and per line the HSN code, quantity, rate, taxable value and tax |
+| FR-GST-5a | **No supplier GSTIN, no invoice.** Rule 46(b) makes it a mandatory particular, so with `SELLER_LEGAL_NAME` or `SELLER_GSTIN` unset the route refuses (409) rather than printing a document captioned TAX INVOICE that no buyer can claim credit against |
+| FR-GST-5b | An invoice is issued only against a supply that has happened — a shipped or completed order. Anything earlier, including allocated and picked, is refused (409) |
+| FR-GST-6 | The invoice states the CGST + SGST or IGST split the order was computed with, and repeats the document's rounding; it computes no tax of its own |
+| FR-GST-7 | **Rendering an invoice writes nothing** — no ledger row, no change of status, and no number of its own: it carries the sales order's |
+| FR-GST-8 | The invoice prints from the browser at A4; no PDF service and no further runtime dependency |
 
 ### 3.6 Analysis (FR-AI)
 
@@ -329,8 +338,18 @@ indefinite — nothing is hard-deleted; records are retired.
 
 Named deliberately, so their absence is a decision:
 
-- Payments, patient billing, insurance claims
-- E-way bill generation and GST return filing
+- Payment of any kind — patient billing, insurance claims, settlement,
+  receipts. A sales order is now checked against the customer's credit limit
+  (FR-OPS-12), but that check weighs **open-order exposure**, not money owed:
+  no receivable is held, no payment is ever recorded, and nothing here knows
+  whether an invoice was paid.
+- GST return filing
+- E-invoicing — no IRN is obtained and no signed QR code is printed. The tax
+  invoice of FR-GST-5 is a document to hand across a counter, not one a portal
+  has seen.
+- E-way bill generation
+- Bulk data export — no CSV or Excel download anywhere. Screens are read where
+  they are; documents print one at a time.
 - Prescription capture and dispensing against a prescription
 - Barcode hardware integration (barcodes are stored, not scanned by device)
 - Multi-entity or multi-currency operation
@@ -342,11 +361,13 @@ Named deliberately, so their absence is a decision:
 
 | Requirement group | Implementation | Tests |
 |---|---|---|
-| FR-AUTH | `app/core/deps.py`, `app/api/v1/auth.py` | `test_rbac.py` |
-| FR-MD | `app/api/v1/masters.py`, `products.py` | `test_masters.py` |
-| FR-STK | `app/services/ledger.py`, `app/api/v1/stock.py` | `test_e2e.py`, `test_ledger.py` |
-| FR-OPS | `app/api/v1/operations.py` | `test_e2e.py` |
-| FR-GST | `app/services/gst.py` | `test_gst.py` |
+| FR-AUTH | `app/core/deps.py`, `app/core/permissions.py`, `app/api/v1/auth.py` | `test_e2e.py` (login, refresh rotation, the permission and branch-scoping gates) |
+| FR-MD | `app/api/v1/masters.py`, `products.py` | `test_e2e.py` (creation under permission, cost visibility) |
+| FR-STK | `app/services/ledger.py`, `app/api/v1/stock.py` | `test_e2e.py` (over-issue, cold chain, reversal, FEFO), `test_clock.py` |
+| FR-OPS | `app/api/v1/operations.py`, `app/services/procurement.py`, `sales.py`, `transfers.py` | `test_e2e.py`, `test_actor_names.py` |
+| FR-OPS-12–14 (credit limit) | `app/services/sales.py` | `test_credit_limit.py` |
+| FR-GST | `app/services/gst.py` | `test_e2e.py` (the split on a live order), `test_invoice_html.py` (line and document arithmetic), `test_line_hsn.py` (the frozen classification) |
+| FR-GST-5–8 (tax invoice) | `app/services/invoice_html.py`, `app/api/v1/operations.py` | `test_invoice_html.py`, `test_invoice_route.py` |
 | FR-AI | `app/ai/` | `test_ai.py`, `test_settings.py` |
 | FR-OCR | `app/ai/intake/` | `test_intake_router.py`, `test_intake_match.py` |
 | FR-AUD | `app/services/audit.py` | `test_e2e.py`, `test_settings.py` |
