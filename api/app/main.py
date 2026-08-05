@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DataError
 
 from app.ai.anomaly import router as anomaly_router
+from app.ai.ask import router as ask_router
 from app.ai.forecasting import router as forecasting_router
 from app.ai.intake import router as intake_router
 from app.ai.leadtime import router as leadtime_router
@@ -300,6 +301,13 @@ app.include_router(reorder_router.router, prefix=API_PREFIX)
 # nothing — the draft is submitted through the existing grn_router above, by a
 # person, which is what keeps the ledger's only writer unchanged.
 app.include_router(intake_router.router, prefix=API_PREFIX)
+
+# Answers a question typed in English with rows out of this database. The model
+# only ever proposes one SELECT: `ai/ask/safety.py` decides whether it may run,
+# the database plans it before it executes, and it executes in a read-only
+# transaction under a timeout and a row cap. A prompt clever enough to talk the
+# model into a DROP buys a string that is refused unread.
+app.include_router(ask_router.router, prefix=API_PREFIX)
 
 
 def custom_openapi() -> dict:

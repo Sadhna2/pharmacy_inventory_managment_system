@@ -21,6 +21,7 @@ import {
   ArrowLeftRight,
   Building2,
   ChartSpline,
+  MessagesSquare,
   ClipboardList,
   Cog,
   Layers,
@@ -98,6 +99,10 @@ const NAV: { section: string; items: NavItem[] }[] = [
     // stock, so it all sits behind one permission: ai.view.
     section: "Analysis",
     items: [
+      // First because it is the least specialised: the other four answer a
+      // question somebody already knew to ask. A speech bubble rather than a
+      // sparkle — nothing here is magic, and the icon should not promise it.
+      { to: "/ask", label: "Ask", icon: MessagesSquare, permission: "ai.view", feature: "features.nl_reporting" },
       { to: "/replenishment", label: "Replenishment", icon: RefreshCw, permission: "ai.view", feature: "features.reorder" },
       { to: "/forecast", label: "Demand forecast", icon: ChartSpline, permission: "ai.view", feature: "features.forecast" },
       { to: "/exceptions", label: "Exceptions", icon: Siren, permission: "ai.view", feature: "features.anomaly" },
