@@ -55,6 +55,10 @@ class POLineOut(TaxLineOut):
     qty_ordered: Decimal
     qty_received: Decimal
     unit_price: Decimal
+    #: The line's own HSN, not the product's. The product's may have been
+    #: corrected since this order was raised, and this order was taxed under
+    #: the old one.
+    hsn_code: str | None = None
 
 
 class PurchaseOrderIn(BaseModel):
@@ -98,7 +102,12 @@ class PurchaseOrderOut(DocumentTotalsOut):
     expected_date: date | None = None
     notes: str | None = None
     created_by: int
+    #: Resolved names, not just ids. An approver looking at this order is
+    #: about to certify someone else's work, and "created_by: 2" does not
+    #: tell them whose. Null only if the account has since been deleted.
+    created_by_name: str | None = None
     approved_by: int | None = None
+    approved_by_name: str | None = None
     approved_at: datetime | None = None
     lines: list[POLineOut] = []
 
@@ -188,6 +197,7 @@ class GoodsReceiptOut(BaseModel):
     supplier_invoice_date: date | None = None
     received_at: datetime
     received_by: int
+    received_by_name: str | None = None
     notes: str | None = None
     lines: list[GRNLineOut] = []
     #: Transfer numbers raised for the cross-docked lines, so the receipt
@@ -217,6 +227,9 @@ class SOLineOut(TaxLineOut):
     qty_ordered: Decimal
     qty_shipped: Decimal
     unit_price: Decimal
+    #: Read from the line, never from the product: this is the code an invoice
+    #: prints, and a reprint has to match the copy the customer was given.
+    hsn_code: str | None = None
 
 
 class SalesOrderIn(BaseModel):
@@ -336,6 +349,13 @@ class TransferOut(BaseModel):
     to_warehouse_id: int
     to_warehouse_name: str | None = None
     status: DocumentStatus
+    #: A transfer carried neither of these before. It has always recorded who
+    #: raised and who approved it — the columns were simply never returned,
+    #: so the screen had nothing to show.
+    created_by: int
+    created_by_name: str | None = None
+    approved_by: int | None = None
+    approved_by_name: str | None = None
     dispatched_at: datetime | None = None
     received_at: datetime | None = None
     notes: str | None = None
@@ -393,7 +413,9 @@ class AdjustmentOut(BaseModel):
     reason_code: str
     status: DocumentStatus
     created_by: int
+    created_by_name: str | None = None
     approved_by: int | None = None
+    approved_by_name: str | None = None
     notes: str | None = None
     lines: list[AdjustmentLineOut] = []
 

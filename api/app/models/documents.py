@@ -32,6 +32,15 @@ from app.models.enums import DocumentStatus, RecallStatus
 class TaxLineMixin:
     """CGST/SGST for intra-state, IGST for inter-state. Never both."""
 
+    #: The product's HSN as it stood when this line was raised, copied down
+    #: rather than read back through the product. HSN codes do get corrected —
+    #: a mistyped digit, a reclassification — and a line that looked the code
+    #: up at print time would reprint an invoice from last year under a code
+    #: that was not on the invoice the customer holds. Posted tax is never
+    #: recomputed in this system (see SupplierUpdate in schemas/masters.py);
+    #: the classification the tax was charged under is part of that promise.
+    #: Null for a product that never carried one — better than inventing it.
+    hsn_code: Mapped[str | None] = mapped_column(String(8))
     taxable_value: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), default=Decimal("0"), nullable=False
     )

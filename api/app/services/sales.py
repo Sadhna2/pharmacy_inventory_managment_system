@@ -8,7 +8,7 @@ traceability possible (ARCHITECTURE.md §6.10).
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import clock
@@ -86,6 +86,9 @@ def create_sales_order(
                 unit_price=unit_price,
                 taxable_value=tax.taxable_value,
                 gst_rate=tax.gst_rate,
+                # Frozen onto the line beside the rate it was taxed at, not
+                # read off the product later — see TaxLineMixin.
+                hsn_code=product.hsn_code,
                 cgst_amount=tax.cgst_amount,
                 sgst_amount=tax.sgst_amount,
                 igst_amount=tax.igst_amount,
@@ -98,6 +101,11 @@ def create_sales_order(
     so.tax_total = totals.tax_total
     so.round_off = totals.round_off
     so.grand_total = totals.grand_total
+
+    # Last, because the check needs the order's own total, and the whole thing
+    # is one transaction — a refusal here rolls the document back with it.
+    _enforce_credit_limit(db, customer, so)
+
     db.flush()
     return so
 
@@ -221,6 +229,65 @@ def cancel_order(db: Session, so_id: int) -> SalesOrder:
     so.status = DocumentStatus.CANCELLED
     db.flush()
     return so
+
+
+def _enforce_credit_limit(
+    db: Session, customer: Customer, order: SalesOrder
+) -> None:
+    """Refuse an order that takes a customer past their credit limit.
+
+    Be honest about what this measures: OPEN ORDER EXPOSURE, not a receivable.
+    Payments are out of scope for this system (SRS §9), so nothing here knows
+    what has been invoiced, what has been paid, or what is overdue — there is
+    no unpaid balance to compute and pretending otherwise would put a number
+    on screen that no one could reconcile. What the system does know is what
+    it has promised and not yet closed out, so that is what is capped: every
+    order for this customer that is neither cancelled nor completed, plus the
+    one being raised.
+
+    Two consequences worth stating, because they will surprise someone. A
+    customer's headroom frees up when their order is delivered, not when they
+    pay — so a delivered-but-unpaid order stops counting against them, which a
+    real credit control would never allow. And goods still sitting on our own
+    shelf, promised but not yet picked, do count against them, which is
+    stricter than a receivable. It is a brake on how much is out on order at
+    once, and it should be described that way to whoever asks.
+
+    A limit of zero means NO limit, which is what the seed means by it: only
+    institutional customers are given a figure and the walk-in counter is left
+    at zero. Reading zero as "refuse everything" would close the shop.
+    """
+    if customer.credit_limit <= 0:
+        return
+
+    # The new order already has a row of its own by now, so it is excluded
+    # here and added back from the object — the row still holds the zero it
+    # was inserted with, which would quietly understate the exposure.
+    open_orders = db.scalar(
+        select(func.coalesce(func.sum(SalesOrder.grand_total), 0)).where(
+            SalesOrder.customer_id == customer.id,
+            SalesOrder.id != order.id,
+            SalesOrder.status.notin_(
+                [DocumentStatus.CANCELLED, DocumentStatus.COMPLETED]
+            ),
+        )
+    )
+    committed = Decimal(open_orders or 0)
+    exposure = committed + order.grand_total
+    if exposure <= customer.credit_limit:
+        return
+
+    over = exposure - customer.credit_limit
+    headroom = max(customer.credit_limit - committed, Decimal("0"))
+    raise ValidationError(
+        f"{customer.name} has ₹{committed:,.2f} committed on open orders "
+        f"against a credit limit of ₹{customer.credit_limit:,.2f} — this "
+        f"order of ₹{order.grand_total:,.2f} would put them ₹{over:,.2f} "
+        f"over it",
+        [{"field": "customer_id", "message": (
+            f"₹{headroom:,.2f} of the ₹{customer.credit_limit:,.2f} limit is left."
+        )}],
+    )
 
 
 def _get_so(db: Session, so_id: int) -> SalesOrder:

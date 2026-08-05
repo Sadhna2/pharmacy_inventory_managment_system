@@ -179,6 +179,20 @@ USED_BY: dict[str, tuple[str, str]] = {
         "Operations → Sales → row",
         "One order with its lines, allocations and shipments.",
     ),
+    "GET /api/v1/sales-orders/{so_id}/invoice": (
+        "Operations → Sales → Print invoice",
+        "The order rendered as a GST tax invoice: the line table, the HSN-wise "
+        "summary the statute asks for at the foot, and the grand total spelled "
+        "out in lakh and crore rather than millions. Which tax columns appear "
+        "is decided once from the document's own interstate flag — IGST, or "
+        "CGST+SGST — never per line, because a zero-rated line would otherwise "
+        "flip the table halfway down. Every HSN printed is the one frozen onto "
+        "the line when the order was priced, so a reprint still matches the "
+        "copy the customer holds after the catalogue has been corrected. "
+        "Returns HTML, not a PDF: every browser already paginates a long table "
+        "for printing better than a server-side renderer would, and it saves a "
+        "native dependency on a 2 GB box.",
+    ),
     "POST /api/v1/sales-orders/{so_id}/allocate": (
         "Operations → Sales → Allocate",
         "Reserves batches **FEFO** — earliest expiry first — for "
@@ -216,6 +230,15 @@ USED_BY: dict[str, tuple[str, str]] = {
         "lost if one person does both, but it is an inconsistency worth "
         "knowing about rather than assuming.",
     ),
+    "POST /api/v1/transfers/{transfer_id}/cancel": (
+        "Operations \u2192 Transfers \u2192 row menu \u2192 Cancel transfer",
+        "Abandons a transfer that has not shipped, so a document that cannot "
+        "be dispatched can leave the list. Draft, pending and approved can be "
+        "cancelled; once IN_TRANSIT the goods are on a road and the answer is "
+        "to receive them and transfer them back, which leaves both movements "
+        "in the ledger. Posts nothing \u2014 a transfer holds no stock before "
+        "dispatch.",
+    ),
     "POST /api/v1/transfers/{transfer_id}/dispatch": (
         "Operations → Transfers → Dispatch",
         "Posts stock out of the source into IN_TRANSIT. Deliberately two "
@@ -241,6 +264,14 @@ USED_BY: dict[str, tuple[str, str]] = {
     "POST /api/v1/adjustments/{adjustment_id}/approve": (
         "Operations → Adjustments → Approve",
         "Approves and posts the ledger entries. Refuses self-approval.",
+    ),
+    "POST /api/v1/adjustments/{adjustment_id}/cancel": (
+        "Operations → Adjustments → row menu → Cancel adjustment",
+        "Withdraws an adjustment that has not posted, so a document the "
+        "approver will not pass can leave the queue. Only PENDING_APPROVAL "
+        "can be cancelled — once approved the entry is in the ledger, which "
+        "is corrected by a reversing movement and never by editing. The "
+        "raiser may cancel their own: withdrawing a document moves no stock.",
     ),
     # -------------------------------------------------------- analysis: AI
     "GET /api/v1/ai/forecast": (
