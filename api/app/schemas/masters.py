@@ -32,6 +32,11 @@ class CategoryIn(BaseModel):
 
 
 class CategoryUpdate(BaseModel):
+    # Every PATCH example here sends one or two fields on purpose. Only the
+    # fields present are written, so an example listing all of them would
+    # teach the opposite of how the endpoint works.
+    model_config = ConfigDict(json_schema_extra={"example": {"parent_id": 4}})
+
     name: str | None = Field(None, min_length=1, max_length=128)
     parent_id: int | None = None
     is_active: bool | None = None
@@ -136,6 +141,12 @@ class ProductIn(BaseModel):
 
 
 class ProductUpdate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"reorder_point": "2830", "safety_stock_days": 21}
+        }
+    )
+
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     category_id: int | None = None
@@ -186,6 +197,12 @@ class WarehouseIn(BaseModel):
 class WarehouseUpdate(BaseModel):
     """`code` is omitted on purpose — documents and reports refer to it."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"address": "Plot 14, MIDC Andheri, Mumbai 400093"}
+        }
+    )
+
     name: str | None = Field(None, min_length=1, max_length=255)
     is_central: bool | None = None
     state_code: str | None = Field(None, min_length=2, max_length=2)
@@ -223,6 +240,10 @@ class BinUpdate(BaseModel):
     """`code` is absent: stock rows point at a bin by id, but people find a
     location by the label on the shelf. Renaming it would make the two
     disagree with no way to tell which is right."""
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"zone": "COLD-A", "is_cold_chain": True}}
+    )
 
     zone: str | None = Field(None, max_length=32)
     is_cold_chain: bool | None = None
@@ -277,6 +298,12 @@ class SupplierUpdate(BaseModel):
     under rather than recomputing it from the supplier.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"phone": "+91 98200 44556", "payment_terms_days": 60}
+        }
+    )
+
     name: str | None = Field(None, min_length=1, max_length=255)
     gstin: str | None = Field(None, min_length=15, max_length=15)
     state_code: str | None = Field(None, min_length=2, max_length=2)
@@ -328,6 +355,10 @@ class CustomerIn(BaseModel):
 
 class CustomerUpdate(BaseModel):
     """`code` is omitted on purpose — sales orders refer to it."""
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"credit_limit": "250000.00"}}
+    )
 
     name: str | None = Field(None, min_length=1, max_length=255)
     is_institutional: bool | None = None

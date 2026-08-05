@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TunableOut(BaseModel):
@@ -48,6 +48,21 @@ class SettingsOut(BaseModel):
 class SettingsUpdateIn(BaseModel):
     """A batch of changes. All or nothing — a half-saved settings screen leaves
     an administrator unsure what is actually in effect."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "values": {
+                    "anomaly.z_threshold": 3.0,
+                    "forecast.horizon_days": 30,
+                },
+                # Switching a capability off closes its endpoints too — the
+                # navigation entry disappearing is a consequence, not the
+                # mechanism.
+                "features": {"features.invoice_ocr": True},
+            }
+        }
+    )
 
     values: dict[str, Any] = Field(default_factory=dict)
     features: dict[str, bool] = Field(default_factory=dict)

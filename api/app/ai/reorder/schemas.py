@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourcingOut(BaseModel):
@@ -104,6 +104,20 @@ class RaiseOrderIn(BaseModel):
     the lines from the supplier record — a client that could set its own unit
     price could set it to zero.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "supplier_id": 3,
+                "warehouse_id": 1,
+                "lines": [
+                    {"product_id": 12, "quantity": 2800},
+                    {"product_id": 47, "quantity": 600},
+                ],
+                "notes": "Raised from the 12 Mar replenishment run.",
+            }
+        }
+    )
 
     supplier_id: int
     warehouse_id: int

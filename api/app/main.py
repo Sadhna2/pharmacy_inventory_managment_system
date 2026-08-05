@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -15,6 +16,7 @@ from app.ai.leadtime import router as leadtime_router
 from app.ai.reorder import router as reorder_router
 from app.api.v1 import audit, auth, masters, operations, products, stock, users
 from app.api.v1 import settings as settings_api
+from app.core import api_docs
 from app.core.config import settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, get_logger
@@ -61,7 +63,20 @@ app = FastAPI(
     title="Pharmacy Inventory Management System",
     description=(
         "Multi-branch pharmacy chain inventory with an append-only stock ledger, "
-        "batch/expiry tracking with FEFO, GST, and RBAC."
+        "batch/expiry tracking with FEFO, GST, and RBAC.\n\n"
+        "**Every endpoint below says which screen uses it** — the tags are named "
+        "after the sections in the product's sidebar, and each operation ends "
+        "with a *Used by* line naming the screen and describing what it "
+        "computes. Nothing here is unreachable from the interface.\n\n"
+        "Two things worth knowing before reading:\n\n"
+        "* **`stock_movements` is append-only.** A database trigger rejects "
+        "`UPDATE` and `DELETE` on it, so there is no endpoint that edits or "
+        "removes a posting — corrections are reversing entries. Every quantity "
+        "the product shows is derived from this table.\n"
+        "* **The AI endpoints derive, they do not store.** The analysis tags "
+        "read the ledger and compute an answer per request; invoice intake "
+        "produces a draft for a person to check and has no code path to the "
+        "ledger at all."
     ),
     version="0.1.0",
     docs_url="/docs",
@@ -193,3 +208,26 @@ app.include_router(reorder_router.router, prefix=API_PREFIX)
 # nothing — the draft is submitted through the existing grn_router above, by a
 # person, which is what keeps the ledger's only writer unchanged.
 app.include_router(intake_router.router, prefix=API_PREFIX)
+
+
+def custom_openapi() -> dict:
+    """Build the schema once, then tell each operation where it is used.
+
+    Registered after every router, because `api_docs.annotate` walks the
+    finished path table — a route included later would not be reached.
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+    app.openapi_schema = api_docs.annotate(
+        get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+            tags=api_docs.TAG_GROUPS,
+        )
+    )
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
