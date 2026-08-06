@@ -51,8 +51,47 @@ def _warm_forecast_cache() -> None:
         log.warning("forecast_cache_warm_failed", error=str(exc))
 
 
+def _report_invoicing_configuration() -> None:
+    """Say at start-up whether tax invoices can be issued at all.
+
+    They could not, on the deployed server, for as long as the feature had
+    existed. `SELLER_LEGAL_NAME` and `SELLER_GSTIN` were in the server's own
+    `.env` and were never listed in the compose service, so they stopped at
+    the container boundary — and the only symptom was Print invoice answering
+    409, which is the same thing it says when a branch has no registration
+    recorded. Two very different problems, one message, and nothing anywhere
+    to tell them apart.
+
+    A misconfiguration that can only be discovered by a user clicking a button
+    is one that gets discovered by a user clicking a button. This makes the
+    server state its own answer once per boot, where a deploy log will show
+    it.
+    """
+    if settings.can_issue_tax_invoice:
+        log.info(
+            "tax invoicing enabled",
+            seller=settings.seller_legal_name,
+            gstin=settings.seller_gstin,
+        )
+        return
+    missing = [
+        name
+        for name, value in (
+            ("SELLER_LEGAL_NAME", settings.seller_legal_name),
+            ("SELLER_GSTIN", settings.seller_gstin),
+        )
+        if not value
+    ]
+    log.warning(
+        "tax invoicing DISABLED — every invoice will be refused",
+        missing=", ".join(missing),
+        hint="set these in the environment the API container actually receives",
+    )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _report_invoicing_configuration()
     threading.Thread(
         target=_warm_forecast_cache, name="forecast-warmup", daemon=True
     ).start()
