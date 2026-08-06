@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     seller_gstin: str = ""
     seller_address: str = ""
 
+    # How the buyer reaches the firm about the document in their hand. Unlike
+    # the three above these are not statutory particulars, so they are printed
+    # when set and simply left off when not — no placeholder, for the same
+    # reason there is no default GSTIN. Two numbers is the usual arrangement,
+    # a landline and a mobile, so the field takes a list separated by commas
+    # and prints it as given.
+    seller_phone: str = ""
+    seller_email: str = ""
+
     @property
     def can_issue_tax_invoice(self) -> bool:
         """Whether a document may lawfully be captioned TAX INVOICE."""

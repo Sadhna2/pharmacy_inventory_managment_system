@@ -47,6 +47,14 @@ class Party(Protocol):
     gstin: str | None
     state_code: str
 
+    #: How to reach this party about the document. Not required by rule 46 —
+    #: which asks for the name, address and GSTIN and stops there — but an
+    #: invoice is also the thing somebody rings about when a carton is short,
+    #: and a document that names no way to do that gets a phone call to
+    #: whoever answered last time. `Customer` already carries both.
+    phone: str | None
+    email: str | None
+
 
 #: Print styling only. Black on white, no fills, no webfonts: this is a
 #: document that gets photocopied and faxed, not a screen.
@@ -233,11 +241,24 @@ def _parties(order: "SalesOrder", *, seller: Party) -> str:
 
 
 def _party_block(party: Party) -> str:
+    # Contact lines are omitted rather than printed empty. An invoice showing
+    # "Phone: —" tells the reader the number is unknown to the system, which is
+    # information nobody needs on a tax document; no line at all reads as the
+    # firm simply not putting one there.
+    contact = "".join(
+        f'<span class="sub">{label}: {_esc(value)}</span>'
+        for label, value in (
+            ("Phone", (getattr(party, "phone", None) or "").strip()),
+            ("Email", (getattr(party, "email", None) or "").strip()),
+        )
+        if value
+    )
     return (
         f"<strong>{_esc(party.name)}</strong>"
         f'<span class="sub">{_address(party.address)}</span>'
         f'<span class="sub">GSTIN: {_esc(party.gstin)}</span>'
         f'<span class="sub">State: {_state(party.state_code)}</span>'
+        f"{contact}"
     )
 
 

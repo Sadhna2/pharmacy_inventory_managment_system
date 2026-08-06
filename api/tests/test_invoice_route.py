@@ -71,6 +71,10 @@ class _Party:
     address: str | None
     gstin: str | None
     state_code: str
+    # Optional, and last, so the positional stubs above keep building. The
+    # real `Customer` carries both columns.
+    phone: str | None = None
+    email: str | None = None
 
 
 @dataclass
@@ -468,6 +472,61 @@ def test_a_branch_registration_alone_is_enough_to_issue(fetch, monkeypatch):
 
     assert response.status_code == 200
     assert "27AAPFU0939F1ZV" in response.text
+
+
+SELLER_PHONE = "+91 22 2856 4410, +91 98204 33127"
+SELLER_EMAIL = "accounts@sadhnapharma.co.in"
+
+
+def test_the_firms_contact_details_print_when_configured(fetch, monkeypatch):
+    """An invoice is also what somebody rings about when a carton is short.
+
+    Not a rule 46 particular, so its absence does not invalidate anything —
+    but a document naming no way to reach the supplier gets a phone call to
+    whoever answered last time, which is how a query about an invoice ends up
+    with someone who never saw it.
+    """
+    monkeypatch.setattr(settings, "seller_phone", SELLER_PHONE)
+    monkeypatch.setattr(settings, "seller_email", SELLER_EMAIL)
+
+    body = fetch(_order()).text
+
+    assert SELLER_PHONE in body, "both numbers, as entered"
+    assert SELLER_EMAIL in body
+
+
+def test_contact_lines_are_left_off_rather_than_printed_empty(fetch, monkeypatch):
+    """"Phone: —" tells the reader the number is unknown to the system, which
+    is a fact about our database and not about the supply. No line at all
+    reads as the firm simply not putting one there."""
+    monkeypatch.setattr(settings, "seller_phone", "")
+    monkeypatch.setattr(settings, "seller_email", "")
+
+    body = fetch(_order(customer=_Party("Cash buyer", None, None, "MH"))).text
+
+    assert "Phone:" not in body
+    assert "Email:" not in body
+    # The statutory particulars are unaffected — they still print, em dash and
+    # all, because a missing one there is a fact the reader must see.
+    assert "GSTIN:" in body
+
+
+def test_the_buyers_own_contact_details_print_too(fetch):
+    """Same block, other party. `Customer` already carries both columns, so
+    this costs nothing and answers "who do we chase for payment"."""
+    buyer = _Party(
+        "City Hospital",
+        "Marine Lines, Mumbai 400002",
+        "27AAACS1234A1Z5",
+        "MH",
+        phone="+91 22 6612 0900",
+        email="purchasing@cityhospital.co.in",
+    )
+
+    body = fetch(_order(customer=buyer)).text
+
+    assert "+91 22 6612 0900" in body
+    assert "purchasing@cityhospital.co.in" in body
 
 
 def test_the_buyers_gstin_prints_as_recorded(fetch):

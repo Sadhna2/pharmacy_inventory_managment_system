@@ -623,6 +623,8 @@ class _Seller:
     address: str | None
     gstin: str | None
     state_code: str
+    phone: str | None = None
+    email: str | None = None
 
 
 #: A tax invoice may only be raised for a supply that has actually happened.
@@ -743,6 +745,11 @@ def sales_order_invoice(
                 # printed "State: GJ (24)" against a GSTIN opening "27".
                 gstin=registration,
                 state_code=so.warehouse.state_code,
+                # Firm-wide, unlike the address: a buyer ringing about a short
+                # carton wants the number that gets answered, not the one on
+                # the loading bay of the branch it shipped from.
+                phone=settings.seller_phone,
+                email=settings.seller_email,
             ),
             # The only name this system has for a state is the two-letter code
             # itself — nothing here stores "Maharashtra" — and the renderer
