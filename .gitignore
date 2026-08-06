@@ -47,5 +47,9 @@ bench/ocr/colab/*.zip
 
 # Throwaway Chrome profiles left by the screenshot scripts
 docs/product-guide/shots/.profile*
-# The published guide is built from guide.html + shots/ — see build.mjs
-docs/product-guide/dist/
+# docs/product-guide/dist/ is deliberately NOT ignored. It is a build output,
+# and the usual reason to ignore one does not apply: it is the artefact people
+# are meant to download. `guide.html` on its own renders every screenshot as an
+# empty box, because its images are `{{placeholders}}` until build.mjs inlines
+# them — so a repository holding only the source hands every visitor a guide
+# with no pictures in it, which is how this was found.

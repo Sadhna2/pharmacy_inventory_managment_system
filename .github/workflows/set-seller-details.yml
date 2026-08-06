@@ -156,8 +156,6 @@ jobs:
           cd ~
           docker compose -f docker-compose.yml -f docker-compose.prod.yml \
             up -d --force-recreate api
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-            exec -T api python -c "print('api is up')"
 
       # The API reports its invoicing configuration on the first line of its
       # startup. Reading that back is the difference between "the file was
@@ -168,17 +166,35 @@ jobs:
       # its checksum. A wrong check digit still reports as enabled here and
       # then refuses at invoice time. The validator step above is what covers
       # that, which is why it runs before the file is touched.
+      # Polled, not read once. `up -d` returns when the container exists, which
+      # is well before uvicorn has imported the application and run its
+      # lifespan — and on this box `migrate` runs first, so the gap is seconds.
+      # The first run of this workflow read the log one second after migrate
+      # exited, found nothing, and failed a step whose work had already
+      # succeeded. Waiting is the fix; the API publishes no host port, so there
+      # is nothing to poll for readiness except the line itself.
       - name: Read the boot report back
         run: |
           cd ~
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-            logs api --since 5m | grep -i "tax invoicing" | tail -5 > /tmp/invoicing.txt
+          for _ in $(seq 1 60); do
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              logs api --since 10m 2>/dev/null \
+              | grep -i "tax invoicing" | tail -5 > /tmp/invoicing.txt || true
+            [ -s /tmp/invoicing.txt ] && break
+            sleep 2
+          done
+
           cat /tmp/invoicing.txt
+
+          if ! [ -s /tmp/invoicing.txt ]; then
+            echo "::error::No invoicing report after two minutes. The API may have failed to start; the previous ~/.env is backed up beside it."
+            exit 1
+          fi
           if grep -qi "DISABLED" /tmp/invoicing.txt; then
             echo "::error::The API still reports tax invoicing as disabled. The previous ~/.env is backed up beside it."
             exit 1
           fi
           if ! grep -qi "enabled" /tmp/invoicing.txt; then
-            echo "::error::No invoicing report in the log — the API may not have finished starting."
+            echo "::error::The invoicing report says neither enabled nor disabled — read it above."
             exit 1
           fi

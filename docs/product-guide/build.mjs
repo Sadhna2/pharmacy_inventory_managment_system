@@ -7,6 +7,13 @@
  * `guide.html` is the source you edit. It references shots by name —
  * `src="{{dashboard}}"` — and this turns each one into a data: URI, because a
  * published artifact cannot fetch anything from another host.
+ *
+ * `dist/guide.html` IS COMMITTED, unusually for a build output. Edit the
+ * source, then run this, then commit both. The reason is that the source on
+ * its own is not readable: every screenshot in it is a `{{placeholder}}`, so
+ * anyone who downloads `guide.html` from the repository gets a guide with
+ * twenty-four empty boxes where the evidence should be. That happened. The
+ * output is the thing people are meant to open, so the repository carries it.
  */
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
