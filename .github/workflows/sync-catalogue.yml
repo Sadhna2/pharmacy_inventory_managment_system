@@ -1,0 +1,92 @@
+# Brings the deployed catalogue up to the current commit. Run by hand.
+#
+# WHY THIS IS NOT PART OF THE DEPLOY
+# ----------------------------------
+# The catalogue is fixture data — invented products, invented distributors —
+# and a seeder that reaches into a live database on every release is one that
+# will eventually put an invented product on somebody's real order. Adding
+# stock items to a running installation should be a decision, with a name
+# against it, which is what a manual dispatch is and an automatic step is not.
+#
+# WHY IT EXISTS AT ALL
+# --------------------
+# Production was seeded once, on first boot, and `bootstrap.seed()` returns
+# immediately on any database that already holds a user. The day after the
+# server was provisioned the catalogue grew from the twelve products chosen to
+# exercise the system to the fifty a distributor's invoice actually lists — and
+# the server kept the twelve. Invoice scanning then read those invoices
+# perfectly and could match almost nothing on them, because the products it had
+# just read did not exist.
+#
+# The command is idempotent and additive: it inserts what is absent and leaves
+# everything present untouched. Running it twice is a no-op, and it says so.
+
+name: Sync catalogue on production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SYNC to confirm this writes to the production database'
+        required: true
+        default: ''
+
+concurrency:
+  # Never alongside a deploy: that one restarts the API mid-command.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Add missing catalogue rows
+    runs-on: [self-hosted, pharmacy-prod]
+    steps:
+      # A dispatch is two clicks, and the second one is easy to make without
+      # reading the first. Typing the word is the point.
+      - name: Refuse unless confirmed
+        if: inputs.confirm != 'SYNC'
+        run: |
+          echo "::error::Type SYNC in the confirm box to run this."
+          exit 1
+
+      - name: What the catalogue holds now
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            exec -T api python -c "
+          from app.db.session import SessionLocal
+          from app.models.masters import Product, ProductSupplier
+          from sqlalchemy import func, select
+          with SessionLocal() as db:
+              p = db.scalar(select(func.count()).select_from(Product))
+              s = db.scalar(select(func.count()).select_from(ProductSupplier))
+              print(f'before: {p} products, {s} distributor links')
+          "
+
+      # `-T` because there is no TTY on a runner, and without it docker
+      # compose exits before the command has run.
+      - name: Sync
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            exec -T api python -m app.seed.bootstrap --sync-catalogue
+
+      - name: Prove nothing is left unlinked
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            exec -T api python -c "
+          from app.db.session import SessionLocal
+          from app.models.masters import Product, ProductSupplier
+          from sqlalchemy import func, select
+          with SessionLocal() as db:
+              orphans = db.scalar(
+                  select(func.count()).select_from(Product).where(
+                      ~select(ProductSupplier.id)
+                      .where(ProductSupplier.product_id == Product.id)
+                      .exists()
+                  )
+              )
+              print(f'products with no distributor: {orphans}')
+              raise SystemExit(1 if orphans else 0)
+          "
