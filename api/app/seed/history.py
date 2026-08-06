@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete, func, insert, select, text
+from sqlalchemy import and_, delete, func, insert, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -225,6 +225,8 @@ class Sim:
         unit_cost: Decimal | None = None,
         user_id: int | None = None,
         notes: str | None = None,
+        reference_type: str | None = None,
+        reference_id: int | None = None,
     ) -> None:
         if quantity == 0:
             return
@@ -239,8 +241,13 @@ class Sim:
             "serial_id": None,
             "quantity": quantity,
             "unit_cost": unit_cost,
-            "reference_type": TAG,
-            "reference_id": None,
+            # Tagged as generated so `reset` can find it, unless the caller
+            # names the document it belongs to. A transfer's postings are how
+            # the API answers "which batches actually went", so the seeded ones
+            # have to carry the same link a real dispatch does — otherwise
+            # every demo transfer reads as though nothing shipped.
+            "reference_type": reference_type or TAG,
+            "reference_id": reference_id,
             "idempotency_key": None,
             "occurred_at": occurred_at,
             "created_by": user_id or self.staff_id,
@@ -431,6 +438,8 @@ class Sim:
                     lot_id=lot.lot_id,
                     unit_cost=item.unit_cost,
                     notes="Transfer in" if is_transfer else "Goods received",
+                    reference_type="TRANSFER" if is_transfer else None,
+                    reference_id=item.transfer_id if is_transfer else None,
                 )
                 if is_transfer:
                     # Close out the in-transit leg posted at dispatch.
@@ -443,6 +452,25 @@ class Sim:
                         lot_id=lot.lot_id,
                         status=StockStatus.IN_TRANSIT,
                         notes="Arrived",
+                        reference_type="TRANSFER",
+                        reference_id=item.transfer_id,
+                    )
+                    # Book it against the line, not just the ledger. The
+                    # document has always been marked COMPLETED here while its
+                    # lines still read `qty_received = 0`, so a finished
+                    # transfer showed "0 of 439" received — the stock had
+                    # demonstrably arrived and the paperwork said otherwise.
+                    self.db.execute(
+                        update(StockTransferLine)
+                        .where(
+                            StockTransferLine.stock_transfer_id == item.transfer_id,
+                            StockTransferLine.product_id == product.id,
+                            StockTransferLine.lot_id.is_not_distinct_from(lot.lot_id),
+                        )
+                        .values(
+                            qty_received=StockTransferLine.qty_received
+                            + item.quantity
+                        )
                     )
                     self.in_flight[item.transfer_id] -= 1
                     if self.in_flight[item.transfer_id] == 0:
@@ -567,6 +595,12 @@ class Sim:
                 status=DocumentStatus.IN_TRANSIT,
                 created_by=self.manager_id,
                 approved_by=self.admin_id,
+                # Raised in the morning, on the road by mid-afternoon. Stated
+                # rather than left to the column default, which would stamp two
+                # years of documents with the minute the seed happened to run —
+                # and a transfer carries no business date of its own, so this
+                # is the only thing the screen can date it by.
+                created_at=self._stamp(day, hour=10),
                 dispatched_at=self._stamp(day, hour=15),
                 notes=TAG,
             )
@@ -594,6 +628,8 @@ class Sim:
                         unit_cost=lot.cost,
                         user_id=self.manager_id,
                         notes=f"To {warehouse.name}",
+                        reference_type="TRANSFER",
+                        reference_id=transfer.id,
                     )
                     # Visible as in-transit at the destination, so the chain
                     # total never dips while stock is on the road.
@@ -607,6 +643,8 @@ class Sim:
                         status=StockStatus.IN_TRANSIT,
                         user_id=self.manager_id,
                         notes="In transit",
+                        reference_type="TRANSFER",
+                        reference_id=transfer.id,
                     )
                     travel = self.rng.choice([1, 1, 2, 2, 3])
                     self.in_flight[transfer.id] += 1
@@ -659,6 +697,10 @@ class Sim:
                 expected_date=day + timedelta(days=int(self.reliability[supplier_id][0])),
                 created_by=self.manager_id,
                 approved_by=self.admin_id,
+                # As above: `order_date` is the business date and is right, but
+                # the clock beside it would otherwise be the seed's run time on
+                # every one of these.
+                created_at=self._stamp(day, hour=16),
                 approved_at=self._stamp(day, hour=17),
                 is_interstate=interstate,
                 place_of_supply=self.central.state_code,
@@ -832,7 +874,23 @@ def reset(db: Session) -> None:
     db.execute(text(
         "ALTER TABLE stock_movements DISABLE TRIGGER trg_stock_movements_append_only"
     ))
-    db.execute(delete(StockMovement).where(StockMovement.reference_type == TAG))
+    # Generated rows are tagged, except the transfer postings — those carry a
+    # real document reference so the API can report which batches shipped, the
+    # same as a transfer raised through the interface. So they are found the
+    # only other way there is: by the document they point at.
+    db.execute(
+        delete(StockMovement).where(
+            or_(
+                StockMovement.reference_type == TAG,
+                and_(
+                    StockMovement.reference_type == "TRANSFER",
+                    StockMovement.reference_id.in_(
+                        select(StockTransfer.id).where(StockTransfer.notes == TAG)
+                    ),
+                ),
+            )
+        )
+    )
     db.execute(text(
         "ALTER TABLE stock_movements ENABLE TRIGGER trg_stock_movements_append_only"
     ))

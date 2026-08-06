@@ -28,6 +28,8 @@ Idempotent. Re-running replaces the previous showcase rather than doubling it.
 """
 
 import argparse
+import random
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -76,6 +78,15 @@ from app.services import ledger, procurement, recall, sales, transfers
 #: Stamped on every document this module creates, so a re-run can find and
 #: remove its own previous output without touching anything else.
 TAG = "SHOWCASE"
+
+#: Recalls carry no notes column, so these double as the marker `clear` uses
+#: to recognise its own. Wording one of these differently in future without
+#: updating the other would strand the old recall on the compliance screen.
+RECALL_REASONS = [
+    ("Dissolution failure at the 6-month stability pull", "CDSCO/RC/2026/0417"),
+    ("Supplier notified a mislabelled strength on the carton", "CDSCO/RC/2026/0431"),
+]
+SHOWCASE_RECALL_REASONS = [reason for reason, _ in RECALL_REASONS]
 
 
 # ------------------------------------------------------------------ context
@@ -157,6 +168,11 @@ def clear(db: Session) -> None:
     second damage event rather than rewriting the first, which is correct —
     that is what would happen in production too.
     """
+    # Recalls are deliberately not in this list. Raising one quarantines stock
+    # and closing one scraps it, and both are ledger rows this function will
+    # not touch — so deleting the recall would leave the frozen stock with no
+    # document saying why. `recalls()` below refuses to add a second set
+    # instead, which is what stops them multiplying across re-runs.
     for model, where in (
         (
             StockAdjustmentLine,
@@ -740,6 +756,134 @@ def documents(ctx: Ctx) -> dict[str, int]:
 # -------------------------------------------------------------------- recalls
 
 
+#: How many orders the sales screen gets. Enough that the price history means
+#: something and a large order has to be split; few enough to read on one page.
+ORDER_BOOK = 13
+
+#: What each buyer pays, as a fraction of MRP.
+#:
+#: The point of the number is that it *differs* — the sales form offers the
+#: price this customer last paid, and with one flat discount that feature has
+#: nothing to say. A hospital buying in volume beats a clinic; a walk-in pays
+#: the printed price, which is what MRP is for.
+BUYER_DISCOUNT = {True: Decimal("0.72"), False: Decimal("0.88")}
+WALK_IN = Decimal("1.00")
+
+
+def order_book(ctx: Ctx) -> dict[str, int]:
+    """A short run of real sales orders, so the sales screen has a history.
+
+    The simulation posts two years of counter sales straight to the ledger and
+    raises no documents for them, which is right — a retail sale is not an
+    order. But it leaves the Sales screen with only the four the block above
+    creates for status coverage, and two features that need more than that:
+
+      * the price box offers what this customer last paid, and with no prior
+        orders it can only ever fall back to MRP
+      * the branch planner splits an order across warehouses, which needs
+        stock actually committed in enough places to be worth splitting
+
+    Deliberately small. This exists to make two features demonstrable, not to
+    fill a table — the screens are read one page at a time.
+
+    Quantities are checked against free stock before a line is added, and
+    anything short is skipped rather than raised and left unallocatable.
+    """
+    db, made = ctx.db, defaultdict(int)
+    rng = random.Random(20260805)
+
+    buyers = list(db.scalars(select(Customer).where(Customer.is_active)))
+    if not buyers:
+        return {}
+    warehouses = [ctx.central, *ctx.branches]
+
+    for index in range(ORDER_BOOK):
+        customer = buyers[index % len(buyers)]
+        # A branch in the buyer's own state where there is one, so most orders
+        # are the ordinary CGST + SGST case and a couple are genuinely IGST.
+        local = [w for w in warehouses if w.state_code == customer.state_code]
+        warehouse = rng.choice(local or warehouses)
+
+        free = db.execute(
+            select(
+                StockBalance.product_id,
+                func.sum(StockBalance.qty_on_hand - StockBalance.qty_reserved),
+            )
+            .join(Product, Product.id == StockBalance.product_id)
+            .where(
+                StockBalance.warehouse_id == warehouse.id,
+                StockBalance.status == StockStatus.AVAILABLE,
+                Product.is_active,
+                Product.mrp.is_not(None),
+            )
+            .group_by(StockBalance.product_id)
+            .having(
+                func.sum(StockBalance.qty_on_hand - StockBalance.qty_reserved) > 80
+            )
+        ).all()
+        if not free:
+            continue
+
+        rate = (
+            WALK_IN
+            if not customer.is_institutional
+            else BUYER_DISCOUNT[customer.is_institutional]
+        )
+        lines = []
+        for product_id, available in rng.sample(free, min(len(free), rng.randint(1, 3))):
+            product = db.get(Product, product_id)
+            wanted = Decimal(rng.randrange(10, 60, 5))
+            if wanted > available:
+                continue
+            lines.append({
+                "product_id": product_id,
+                "qty_ordered": wanted,
+                # Rounded to the rupee. A price with four decimal places on it
+                # is a database artefact, not something anyone quoted.
+                "unit_price": (product.mrp * rate).quantize(Decimal("0.01")),
+            })
+        if not lines:
+            continue
+
+        order = sales.create_sales_order(
+            db,
+            customer_id=customer.id,
+            warehouse_id=warehouse.id,
+            lines=lines,
+            user_id=ctx.staff.id,
+            order_date=ctx.today - timedelta(days=rng.randint(1, 45)),
+            notes=TAG,
+        )
+        db.commit()
+
+        # Mostly delivered, because most orders are. The open ones are what
+        # make the screen worth looking at.
+        outcome = rng.choices(
+            ["completed", "allocated", "draft", "cancelled"],
+            weights=[6, 2, 2, 1],
+        )[0]
+        made[outcome] += 1
+        if outcome == "draft":
+            continue
+        if outcome == "cancelled":
+            sales.cancel_order(db, order.id)
+            db.commit()
+            continue
+        try:
+            sales.allocate_order(db, order.id)
+            db.commit()
+            if outcome == "completed":
+                sales.ship_order(db, order.id, user_id=ctx.staff.id)
+                db.commit()
+        except Exception as exc:  # noqa: BLE001 — reported, never silent
+            print(f"  ! {order.so_number} stopped at {outcome}: {exc}")
+            db.rollback()
+            made[outcome] -= 1
+            made["draft"] += 1
+
+    return dict(made)
+
+
 def recalls(ctx: Ctx) -> dict[str, int]:
     """One recall in each status, on batches that are genuinely in stock.
 
@@ -748,6 +892,19 @@ def recalls(ctx: Ctx) -> dict[str, int]:
     that would list nobody.
     """
     db, made = ctx.db, {}
+
+    # Raising a recall quarantines stock and closing it scraps it, and neither
+    # movement can be taken back — so unlike everything else here this step
+    # cannot be undone and re-made. A second run must leave the first run's
+    # recalls exactly as they are, or the compliance register grows by two
+    # every time the seed is refreshed while the stock they froze stays frozen.
+    already = db.scalar(
+        select(func.count())
+        .select_from(Recall)
+        .where(Recall.reason.in_(SHOWCASE_RECALL_REASONS))
+    )
+    if already:
+        return {"kept": already}
 
     held = list(
         db.scalars(
@@ -766,11 +923,7 @@ def recalls(ctx: Ctx) -> dict[str, int]:
         )
     )
 
-    reasons = [
-        ("Dissolution failure at the 6-month stability pull", "CDSCO/RC/2026/0417"),
-        ("Supplier notified a mislabelled strength on the carton", "CDSCO/RC/2026/0431"),
-    ]
-    for lot, (reason, ref) in zip(held, reasons, strict=False):
+    for lot, (reason, ref) in zip(held, RECALL_REASONS, strict=False):
         impact = recall.initiate_recall(
             db, lot_id=lot.id, reason=reason, user_id=ctx.manager.id, regulator_ref=ref
         )
@@ -876,6 +1029,8 @@ def main() -> None:
         print(f"  {stock_states(ctx)}")
         print("Adding open documents…")
         print(f"  {documents(ctx)}")
+        print("Adding sales orders…")
+        print(f"  {order_book(ctx)}")
         print("Adding recalls…")
         print(f"  {recalls(ctx)}")
 
