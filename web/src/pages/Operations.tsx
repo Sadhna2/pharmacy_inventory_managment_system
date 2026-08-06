@@ -812,6 +812,20 @@ export function SalesOrders() {
                         if (!printed) return;
                         printed.document.write(html);
                         printed.document.close();
+                        // Open the print dialogue rather than leaving a tab of
+                        // HTML for the reader to find the menu item in. "Save
+                        // as PDF" is a destination in that dialogue on every
+                        // desktop browser, so this is also how the invoice
+                        // gets downloaded as a PDF — there is no server-side
+                        // renderer to add, and a 2 GB box is not the place to
+                        // put one. The tab stays open behind it, so cancelling
+                        // the dialogue still leaves the invoice on screen.
+                        //
+                        // The document is inline: no webfonts, no images, no
+                        // stylesheet to fetch, so there is nothing still
+                        // loading by the time write() returns.
+                        printed.focus();
+                        printed.print();
                       })
                       .catch((err) => {
                         printed?.close();
@@ -825,7 +839,7 @@ export function SalesOrders() {
                       });
                   }}
                 >
-                  <Printer className="size-4" /> Print invoice
+                  <Printer className="size-4" /> Print or save as PDF
                 </Button>
               )}
               {/* A blocked popup is silent, and so is a failed fetch — without
