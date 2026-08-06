@@ -276,6 +276,41 @@ def sync_roles(db: Session, perms: dict[str, Permission]) -> dict[str, Role]:
     return roles
 
 
+def converge(db: Session) -> str:
+    """Everything that must be true of *any* database this code runs against.
+
+    There are two kinds of thing in this module and telling them apart is the
+    whole point of this function existing.
+
+    `seed()` below builds a demonstration: products, branches, users, two
+    invented GST registrations. It is fixture data, it runs once, and it must
+    never touch a database it did not create — a made-up registration number
+    printed on a real tax invoice is worse than a missing one.
+
+    This is the other kind. Permissions, the roles that hold them and the
+    feature flags that expose them are not data the business owns; they are
+    what the running code *is*, expressed as rows because the authorisation
+    check reads them from a table. A deployment whose permission rows lag the
+    code is a deployment where new endpoints 403 for everybody.
+
+    That is not hypothetical. `sync_permissions` and `sync_roles` used to be
+    called from inside `seed()`, which `main()` returns before reaching on any
+    database that already holds a user — so on the server they had not run
+    since the day it was first provisioned. Feature flags escaped only because
+    somebody hit the problem once and lifted that single call out by hand.
+    Naming the category is what stops the next one being missed: convergent
+    work goes here, fixtures go in `seed()`, and `main()` runs this one
+    unconditionally.
+
+    Idempotent by construction — every step below adds what is absent and
+    leaves what is present alone — so it is safe on an empty database, on a
+    two-year-old one, and on every container restart in between.
+    """
+    perms = sync_permissions(db)
+    roles = sync_roles(db, perms)
+    flags = sync_feature_flags(db)
+    return f"permissions: {len(perms)}   roles: {len(roles)}   flags: {flags}"
+
 
 def _digits(*parts: str) -> int:
     """A stable number derived from text.
@@ -340,9 +375,20 @@ def _sourcing_for(
 
 
 def seed(db: Session) -> None:
-    perms = sync_permissions(db)
-    roles = sync_roles(db, perms)
-    print(f"  permissions: {len(perms)}   roles: {len(roles)}")
+    """The demonstration fixture: an empty database only.
+
+    Everything here is invented — the branches, the catalogue, the two GST
+    registrations in `STATE_REGISTRATIONS`. That is fine for a database this
+    function created and wrong for one it did not, so `main()` runs it only
+    when there is no user. Anything that must also reach an established
+    installation belongs in `converge()` above, not here.
+    """
+    # Redundant on the path through main(), which converges first. Kept so this
+    # function stands up on its own — a fresh database needs the roles to exist
+    # before it can attach one to a user, and a caller reaching for `seed` has
+    # no reason to know that.
+    print(f"  {converge(db)}")
+    roles: dict[str, Role] = {r.code: r for r in db.scalars(select(Role)).all()}
 
     # --- UOMs ---------------------------------------------------------------
     uoms: dict[str, Uom] = {u.code: u for u in db.scalars(select(Uom)).all()}
@@ -786,18 +832,21 @@ def main() -> None:
     _check_password()
     db = SessionLocal()
     try:
-        # Seeding is not idempotent — it would collide on unique constraints
-        # and double every opening balance. `docker compose up` runs this on
-        # every start, so an already-populated database is a no-op, not a
-        # crash. Use `db.sh reset` (or drop the volume) to reseed.
-        # Feature flags sync on every run, unlike the fixture below. New
-        # capabilities have to reach an existing installation without anyone
-        # dropping their database to get a menu item.
-        flags = sync_feature_flags(db)
+        # Before the early return, and deliberately: this is the work that has
+        # to reach an installation that already exists. Permissions and roles
+        # sat below it for months, so the server's authorisation rows were
+        # whatever they had been on the day it was provisioned, and any new
+        # permission would have deployed an endpoint that refused everybody.
+        # See converge() for why the two categories are named apart.
+        summary = converge(db)
         db.commit()
 
+        # The fixture, by contrast, is not idempotent — it would collide on
+        # unique constraints and double every opening balance. `docker compose
+        # up` runs this on every start, so an already-populated database is a
+        # no-op, not a crash. Use `db.sh reset` (or drop the volume) to reseed.
         if db.scalar(select(User.id).limit(1)) is not None:
-            print(f"Database already seeded — skipping. ({flags} feature flags synced)")
+            print(f"Database already seeded — skipping. ({summary})")
             if reset_passwords:
                 n = reset_demo_passwords(db)
                 db.commit()
