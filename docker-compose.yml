@@ -76,6 +76,19 @@ services:
       # Caddy proxies the browser to this service on the same origin, so the
       # browser never makes a cross-origin request and CORS never applies.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      # The firm printed on every tax invoice. These were in `.env.example`
+      # and in the server's own `.env` from the beginning, and never listed
+      # here — so compose read them for `${...}` interpolation and passed none
+      # of them to the container. The deployed API therefore had no legal name
+      # and no GSTIN, and every Print invoice on the server refused with "none
+      # is configured for the firm" while the values sat in a file two
+      # directories up. Nothing in the logs said so; the refusal is a 409 that
+      # looks exactly like a branch with nothing recorded.
+      SELLER_LEGAL_NAME: ${SELLER_LEGAL_NAME:-}
+      SELLER_GSTIN: ${SELLER_GSTIN:-}
+      SELLER_ADDRESS: ${SELLER_ADDRESS:-}
+      SELLER_PHONE: ${SELLER_PHONE:-}
+      SELLER_EMAIL: ${SELLER_EMAIL:-}
       # Invoice scanning (app/ai/intake). Unset is a supported state: the
       # endpoint answers 503 and the rest of the API is unaffected, so a
       # deployment without a key is degraded rather than broken.
