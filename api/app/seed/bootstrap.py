@@ -12,7 +12,7 @@ import sys
 from datetime import timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -683,9 +683,20 @@ def seed(db: Session) -> None:
     db.flush()
 
     # Link every product to a preferred distributor.
-    if not db.scalar(select(ProductSupplier)):
-        distributors = list(suppliers.values())
+    #
+    # Per product, not all-or-nothing. The guard here used to be "does any
+    # ProductSupplier row exist", which is true the moment the first seed runs
+    # — so every product added to the catalogue afterwards had no distributor
+    # behind it forever. That is not cosmetic: invoice matching narrows its
+    # candidates to the chosen supplier's products, so an unlinked product is
+    # one a scanned line can never be matched to, and the reader reports it as
+    # a name it could not find while the product sits in the catalogue.
+    linked = set(db.scalars(select(ProductSupplier.product_id)).all())
+    distributors = list(suppliers.values())
+    if distributors:
         for i, product in enumerate(products.values()):
+            if product.id in linked:
+                continue
             supplier = distributors[i % len(distributors)]
             db.add(
                 ProductSupplier(
@@ -827,8 +838,48 @@ def _seed_opening_stock(db, products, warehouses, user_id: int) -> None:
                 )
 
 
+def _sync_catalogue(db: Session) -> None:
+    """Bring an already-seeded database's catalogue up to this commit.
+
+    Deliberately a hand-run command and not part of the deploy. The catalogue
+    is fixture data — invented products, invented distributors — and a seeder
+    that reaches into an existing installation to add stock items is one that
+    will eventually put an invented product on a real order. Somebody has to
+    decide to run this.
+
+    But a demo server is exactly the installation where it needs running.
+    Production was seeded on 3 August; the day after, the catalogue grew from
+    twelve products chosen to exercise the system into the fifty-odd a
+    distributor's invoice actually lists. `seed()` never runs twice, so the
+    server kept the twelve — and a scanned invoice naming pantoprazole
+    injection had nothing to match against, on a system whose whole point is
+    matching scanned invoices.
+
+    Safe on any database: every step in `seed()` adds what is absent and
+    leaves what is present alone. Users are matched by email, bins and opening
+    stock are skipped once they exist, and nothing is ever updated — a price
+    someone corrected by hand stays corrected.
+    """
+    before = db.scalar(select(func.count()).select_from(Product)) or 0
+    links_before = db.scalar(select(func.count()).select_from(ProductSupplier)) or 0
+
+    seed(db)
+    db.commit()
+
+    after = db.scalar(select(func.count()).select_from(Product)) or 0
+    links_after = db.scalar(select(func.count()).select_from(ProductSupplier)) or 0
+    print(
+        f"Catalogue synced. products {before} -> {after} "
+        f"(+{after - before}), distributor links {links_before} -> {links_after} "
+        f"(+{links_after - links_before})."
+    )
+    if after == before and links_after == links_before:
+        print("Nothing was missing — this database was already up to date.")
+
+
 def main() -> None:
     reset_passwords = "--reset-passwords" in sys.argv
+    sync_catalogue = "--sync-catalogue" in sys.argv
     _check_password()
     db = SessionLocal()
     try:
@@ -846,6 +897,9 @@ def main() -> None:
         # up` runs this on every start, so an already-populated database is a
         # no-op, not a crash. Use `db.sh reset` (or drop the volume) to reseed.
         if db.scalar(select(User.id).limit(1)) is not None:
+            if sync_catalogue:
+                _sync_catalogue(db)
+                return
             print(f"Database already seeded — skipping. ({summary})")
             if reset_passwords:
                 n = reset_demo_passwords(db)
