@@ -117,11 +117,11 @@ the records it reads.
 
 | | |
 |---|---|
-| Database | 40 tables, 2 views, 89 foreign keys |
-| API | 88 operations across 64 paths |
+| Database | 42 tables, 2 views, 92 foreign keys |
+| API | 96 operations across 71 paths |
 | Ledger | ~53,000 movements over two years of synthetic history |
 | Catalogue | 39 products across 4 storage classes and 5 drug schedules |
-| Tests | 284 |
+| Tests | 392 |
 
 ### 3.3 Notable decisions
 
@@ -149,7 +149,7 @@ against.
 
 ## 4. Testing
 
-284 automated tests run in CI on every push, against a **real PostgreSQL and a
+392 automated tests run in CI on every push, against a **real PostgreSQL and a
 real HTTP server** — not mocks. The invariants that matter here do not survive
 being mocked: the append-only trigger, the balance projection, and row locking
 under concurrent allocation are all properties of the database.

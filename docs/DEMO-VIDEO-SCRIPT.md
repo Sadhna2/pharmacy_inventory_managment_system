@@ -183,7 +183,7 @@ Purchasing → the callout is gone.
 **Say**
 
 > Docker is the only prerequisite — one command on macOS, Windows or Linux.
-> Two hundred and eighty-four tests run against a real Postgres and a real
+> Three hundred and ninety-two tests run against a real Postgres and a real
 > HTTP server on every push.
 >
 > The guarantees hold because of how the system is built — an append-only

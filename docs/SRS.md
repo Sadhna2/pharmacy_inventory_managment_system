@@ -307,8 +307,8 @@ hand exactly as before.
 
 ## 6. Interface requirements
 
-- **API** — REST over HTTP, JSON, documented as OpenAPI 3 at `/docs`; 88
-  operations across 64 paths.
+- **API** — REST over HTTP, JSON, documented as OpenAPI 3 at `/docs`; 96
+  operations across 71 paths.
 - **Errors** — RFC 7807 problem details with a stable `type` per error class.
 - **Web** — responsive; every destructive action confirms; every screen states
   what it is showing and over what period.
@@ -317,7 +317,7 @@ hand exactly as before.
 
 ## 7. Data requirements
 
-40 tables and 2 views; see [ER-DIAGRAM.md](ER-DIAGRAM.md). Retention is
+42 tables and 2 views; see [ER-DIAGRAM.md](ER-DIAGRAM.md). Retention is
 indefinite — nothing is hard-deleted; records are retired.
 
 ---
@@ -326,7 +326,7 @@ indefinite — nothing is hard-deleted; records are retired.
 
 | Method | Coverage |
 |---|---|
-| Automated tests | 284, run in CI on every push against a real PostgreSQL and a real HTTP server |
+| Automated tests | 392, run in CI on every push against a real PostgreSQL and a real HTTP server |
 | Ledger invariants | Balances rebuilt from the ledger and compared |
 | Concurrency | Parallel allocation of one batch asserted to serialise |
 | RBAC | Each role asserted against permitted and forbidden endpoints |
