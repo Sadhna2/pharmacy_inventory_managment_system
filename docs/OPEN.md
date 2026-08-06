@@ -76,6 +76,48 @@ Short list of what is agreed but not yet built. Delete a line when it ships.
   twelve pixels and its button overflowed the table. Reverted, and the reason
   is written into `DataTable.tsx` so it does not get re-added.
 
+- **The seller's details never reached the deployed API.** `SELLER_LEGAL_NAME`,
+  `SELLER_GSTIN` and `SELLER_ADDRESS` were in `.env.example` and in the
+  server's own `.env` from the start, and were never listed in the `api`
+  service's `environment:` block — so compose read them for `${...}`
+  interpolation and passed none of them into the container. Every **Print
+  invoice on the server refused**, with the same 409 a branch with nothing
+  recorded gets, while the values sat in a file two directories up. Now
+  forwarded. This also corrects something I told you earlier: prod's bad
+  `SELLER_GSTIN` check digit was never printed on anything, because the
+  setting never arrived — it starts mattering the moment this deploys.
+
+- **Contact details on the invoice.** Two phone numbers and an email in the
+  seller block, from `SELLER_PHONE` / `SELLER_EMAIL`. The buyer's own phone
+  and email print in the same block — `Customer` already carried both columns.
+  Absent details are left off rather than printed as an em dash: "Phone: —"
+  states a fact about our database, not about the supply.
+
+- **The invoice prints, and saves as PDF.** The button used to leave a tab of
+  HTML for you to find the print menu in. It now opens the print dialogue,
+  where "Save as PDF" is a destination on every desktop browser — so the same
+  button both prints and downloads. No server-side PDF renderer: that is a
+  heavy dependency and the box has 2 GB.
+
+- **A closed form no longer remembers what was in it.** Scanning an invoice,
+  going back, and reopening the scanner showed the previous scan's lines.
+  `Modal` unmounts its own subtree when it closes, but the form component
+  holding the draft state sits *above* that call and stays mounted, so nothing
+  was ever discarded. All eleven forms are now mounted only while open, and
+  the reason is written into `Modal` so it does not get undone. Verified in
+  the browser: typed a quantity, closed, reopened — empty.
+
+- **Phone and email when capturing a walk-in.** The panel asked for a name, a
+  state and a GSTIN and stopped, though the endpoint already accepted a phone
+  and `customers` has carried both columns all along. A counter buyer is the
+  party with no other record behind them — no account manager, no purchase
+  order — so if a batch they were sold is recalled, these two fields are the
+  whole means of telling them. Optional, because a sale cannot be held up over
+  a number nobody wants to give, but asked for, because nobody adds them
+  later. Blank is stored as null rather than an empty string, so the invoice
+  can decide whether to print a contact line by asking whether there is one.
+  The full customer form already had both — checked.
+
 - **The deploy waits for the tests now.** It used to trigger on a push to
   `main` alongside CI and wait only on its own build job, so the two raced: a
   commit whose tests failed was published and rolled out anyway, and the only
@@ -103,6 +145,12 @@ Short list of what is agreed but not yet built. Delete a line when it ships.
   `seed()` for demo fixtures on an empty one. Guarded by
   `tests/test_seed_convergence.py`.
 
+## Next up — agreed, not yet built
+
+- [ ] **Decide what to do about DAMAGE in the seed** — see the audit below.
+      One line in `history.py`, or a deliberate note that both shapes are
+      intended.
+
 ## Not code — yours to do, nothing here is waiting on me
 
 - [ ] **Rotate `GEMINI_API_KEY`** — it leaked into a transcript.
@@ -125,6 +173,54 @@ an existing user, and history and showcase are both `--if-empty` against rows
 prod already has. Deploy runs `pull`, `up -d`, `image prune` — no `down -v`, so
 `pgdata` is untouched. The seed changes on this branch (recall guard, history
 timestamps, `compact.py`) only take effect on a fresh build or `--rebuild`.
+
+## The GST and ledger audit — what was checked, and what it found
+
+Run them again with `scripts/audit_gst.py` and `scripts/audit_ledger.py`
+(`PYTHONPATH=. .venv/bin/python ../scripts/audit_gst.py` from `api/`). Both are
+read-only. Each check states what the number *ought* to be from the rule, not
+from the code that produced it, so a wrong implementation and a wrong check
+would have to agree by accident.
+
+**GST — nothing wrong found.** 1,260 line cases and 56 document cases swept
+across every statutory rate (0, 0.25, 3, 5, 12, 18, 28) against quantities and
+prices sitting on the rounding boundaries, both regimes: 0 failures. All 17
+stored orders and 31 lines recomputed from quantity, price and rate: 0
+discrepancies. The HSN summary reconciles to `subtotal` and `tax_total` on
+every invoice. The halves of an intrastate tax sum exactly to the whole rather
+than being rounded separately, which is the usual way an invoice ends up a
+paisa short of itself.
+
+One thing that looked like a failure was my own check being wrong: a
+`round_off` of exactly +0.50 is correct. A ₹3.50 total rounds half-up to ₹4.
+The bound is asymmetric — greater than −0.50, up to and including +0.50 — and
+the sweep now says so.
+
+**Coverage, which is the real finding.** There are **43,388 sale postings in
+the ledger and 17 sales orders**. The two years of generated history is written
+straight to the ledger as movements, with no order documents behind it. That is
+fine for the forecasting and analysis screens, which read movements — but it
+means no historical sale has a tax record or can produce an invoice, and the
+stored data exercises the tax engine on 31 lines. Thirty-one lines is not
+evidence about a tax engine, which is why `tests/test_gst_sweep.py` now covers
+the input space instead: 1,316 cases, no database, under a second.
+
+**Ledger — nothing wrong found.** Over 53,108 rows: the projection equals the
+sum of the postings on all 2,784 (product, warehouse, lot, status) keys;
+`rebuild_balances()` reproduces the live projection exactly on all 2,784; no
+negative stock; nothing reserved beyond what is on hand; both transfer legs
+cancel on all 2,003 (transfer, product) pairs; no zero-quantity rows; every
+idempotency key unique. Both triggers are attached, and UPDATE and DELETE were
+each attempted against the ledger and each refused.
+
+**One inconsistency, in the seed rather than the code.** `DAMAGE` is posted two
+different ways. `showcase.py` writes a balanced pair — 12 out of AVAILABLE, 12
+into DAMAGED, a status move. `history.py:834` writes a single leg: 12 out of
+AVAILABLE and nothing anywhere else, a write-off ("carton discarded"). So "how
+much damaged stock do we hold" answers 24 and "how much was damaged" answers
+36, and both are defensible readings of the same movement type — which is the
+problem. Nothing is lost and no balance is wrong. It is not reachable through
+the app at all: no service or endpoint posts `DAMAGE`, only the seed does.
 
 ## Known and left alone
 
