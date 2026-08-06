@@ -34,9 +34,10 @@ from app.models.documents import (
     StockAdjustment,
     StockTransfer,
 )
+from app.models.enums import MovementType
 from app.models.identity import User
 from app.models.masters import Product, Warehouse
-from app.models.stock import Lot
+from app.models.stock import Lot, StockMovement
 from app.schemas.common import Message, Page, PageParams, paginate
 from app.schemas.documents import (
     AdjustmentIn,
@@ -55,6 +56,7 @@ from app.schemas.documents import (
     SalesOrderPlanOut,
     ShipmentOut,
     SuggestedPriceOut,
+    TransferBatchOut,
     TransferIn,
     TransferOut,
 )
@@ -841,11 +843,76 @@ def cancel_sales_order(
 tr_router = APIRouter(prefix="/transfers", tags=["transfers"])
 
 
+def _dispatched_batches(
+    db: Session, transfer_ids: Sequence[int]
+) -> dict[tuple[int, int], list[TransferBatchOut]]:
+    """Which batches each transfer actually sent, keyed by (transfer, product).
+
+    Read from the ledger because that is the only place it exists. A transfer
+    line names a batch only when someone insisted on one; left alone, FEFO
+    chooses at dispatch and may split a line across two lots. The dispatch
+    posting is therefore the record of what went.
+
+    The negative leg only — dispatch writes a matching pair, out of the source
+    and into the destination as in-transit, and counting both would double
+    every quantity.
+
+    One query for a whole page. Called per row this would be twenty-five round
+    trips to decorate one list.
+    """
+    if not transfer_ids:
+        return {}
+
+    rows = db.execute(
+        select(
+            StockMovement.reference_id,
+            StockMovement.product_id,
+            StockMovement.lot_id,
+            Lot.lot_code,
+            Lot.expiry_date,
+            func.sum(-StockMovement.quantity),
+        )
+        .outerjoin(Lot, Lot.id == StockMovement.lot_id)
+        .where(
+            StockMovement.reference_type == "TRANSFER",
+            StockMovement.reference_id.in_(transfer_ids),
+            StockMovement.movement_type == MovementType.TRANSFER_DISPATCH,
+            StockMovement.quantity < 0,
+        )
+        .group_by(
+            StockMovement.reference_id,
+            StockMovement.product_id,
+            StockMovement.lot_id,
+            Lot.lot_code,
+            Lot.expiry_date,
+        )
+        # Oldest first, which is the order FEFO picked them in.
+        .order_by(Lot.expiry_date.nulls_last(), Lot.lot_code)
+    ).all()
+
+    found: dict[tuple[int, int], list[TransferBatchOut]] = {}
+    for transfer_id, product_id, lot_id, lot_code, expiry, quantity in rows:
+        found.setdefault((transfer_id, product_id), []).append(
+            TransferBatchOut(
+                lot_id=lot_id,
+                lot_code=lot_code,
+                expiry_date=expiry,
+                quantity=quantity,
+            )
+        )
+    return found
+
+
 def _tr_out(
-    db: Session, tr: StockTransfer, names: dict[int, str] | None = None
+    db: Session,
+    tr: StockTransfer,
+    names: dict[int, str] | None = None,
+    batches: dict[tuple[int, int], list[TransferBatchOut]] | None = None,
 ) -> TransferOut:
     if names is None:
         names = actor_names(db, tr.created_by, tr.approved_by)
+    if batches is None:
+        batches = _dispatched_batches(db, [tr.id])
     out = TransferOut.model_validate(tr)
     out.from_warehouse_name = tr.from_warehouse.name
     out.to_warehouse_name = tr.to_warehouse.name
@@ -854,6 +921,7 @@ def _tr_out(
     for line_out, line in zip(out.lines, tr.lines, strict=True):
         line_out.sku = line.product.sku
         line_out.product_name = line.product.name
+        line_out.batches = batches.get((tr.id, line.product_id), [])
     return out
 
 
@@ -908,7 +976,10 @@ def list_transfers(
     names = actor_names(
         db, *(t.created_by for t in rows), *(t.approved_by for t in rows)
     )
-    return paginate([_tr_out(db, t, names) for t in rows], total, params)
+    batches = _dispatched_batches(db, [t.id for t in rows])
+    return paginate(
+        [_tr_out(db, t, names, batches) for t in rows], total, params
+    )
 
 
 @tr_router.post("", response_model=TransferOut, status_code=201)
