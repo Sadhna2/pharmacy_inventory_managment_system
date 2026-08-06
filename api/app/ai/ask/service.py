@@ -20,7 +20,7 @@ produces when nobody asks for better.
 
 WHY THERE IS NO RETRIEVAL AND NO AGENT FRAMEWORK
 ------------------------------------------------
-The whole schema fits in the prompt — `schema_context.TOKEN_BUDGET` is 6000
+The whole schema fits in the prompt — `schema_context.TOKEN_BUDGET` is 8500
 tokens and the briefing is generated from the ORM metadata — so there is
 nothing to retrieve and no vector index to keep in step with the migrations.
 Retrieval here would add a component that can be wrong, to solve a problem this
@@ -201,6 +201,7 @@ class Proposal:
 
     mode: Mode | None
     clarifying_question: str
+    unanswerable: str
     sql: str
     explanation: str
     assumptions: list[str] = field(default_factory=list)
@@ -292,6 +293,20 @@ WHAT TO PRODUCE
 `confidence`   0 to 1. Your own reading of whether this query answers what was
                asked. Nothing is gated on it; it is shown to the reader.
 `clarifying_question`  see below. Empty string when you do not need to ask.
+`unanswerable` one or two sentences, when this database cannot answer the
+               question AT ALL — not "the answer is none", but "the figure is
+               not recorded here". The section above names the cases: a
+               forecast or a reorder recommendation, which are computed on
+               request and never stored; anything about money received, paid
+               or owed, which nothing here records. Say what is missing and
+               where the reader can get it, and leave `sql` empty. Empty
+               string otherwise, which is almost always.
+
+               Do not reach for this because a query would return no rows.
+               "No batches expire this month" is an answer, and a good one.
+               Nor when only part of the question is unrecorded: if you can
+               answer a narrower version, answer it and say in `assumptions`
+               what you could not give them.
 
 WHEN TO ASK BACK INSTEAD OF ANSWERING
 
@@ -370,6 +385,7 @@ PROPOSAL_SCHEMA: dict[str, Any] = {
     "properties": {
         "mode": {"type": "STRING", "enum": ["NEW", "REFINE"]},
         "clarifying_question": {"type": "STRING"},
+        "unanswerable": {"type": "STRING"},
         "sql": {"type": "STRING"},
         "explanation": {"type": "STRING"},
         "assumptions": {"type": "ARRAY", "items": {"type": "STRING"}},
@@ -379,7 +395,7 @@ PROPOSAL_SCHEMA: dict[str, Any] = {
     # told apart from an empty one by every reader downstream. "Nothing to ask"
     # is the empty string, the way intake spells "no discount" as 0.
     "required": [
-        "mode", "clarifying_question", "sql", "explanation",
+        "mode", "clarifying_question", "unanswerable", "sql", "explanation",
         "assumptions", "confidence",
     ],
 }
@@ -472,6 +488,7 @@ def _read_proposal(doc: dict) -> Proposal:
     return Proposal(
         mode=mode,
         clarifying_question=str(doc.get("clarifying_question") or "").strip(),
+        unanswerable=str(doc.get("unanswerable") or "").strip(),
         sql=str(doc.get("sql") or "").strip(),
         explanation=str(doc.get("explanation") or "").strip(),
         assumptions=[
@@ -893,6 +910,27 @@ def answer(
 
     if proposal.clarifying_question:
         return _clarify(asked, proposal, proposal.clarifying_question, mode=mode)
+
+    if proposal.unanswerable:
+        # Not a failure, and this is the branch that makes several of the
+        # briefing's most important instructions reachable at all. Trap 13
+        # tells the model to refuse a question about a forecast rather than
+        # select from the four tables that are always empty, because "no rows"
+        # there reads as "there is nothing to reorder". Before this field
+        # existed the model obeyed and then fell off the end of the pipeline —
+        # neither SQL nor a question — and the pharmacist got a 502 where the
+        # warning should have been. Same for anything about money received,
+        # which nothing in this database records.
+        log.info("ask.unanswerable", question=asked, because=proposal.unanswerable)
+        return Answer(
+            outcome=Outcome.REFUSE,
+            question=asked,
+            mode=mode,
+            explanation=proposal.explanation,
+            assumptions=proposal.assumptions,
+            confidence=proposal.confidence,
+            refusal=proposal.unanswerable,
+        )
 
     if not proposal.sql:
         raise AskFailed(

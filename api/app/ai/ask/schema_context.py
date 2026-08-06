@@ -58,7 +58,16 @@ from app.db.base import Base
 #: characters to a token. Not enforced at runtime — failing a question because
 #: a paragraph was added would be a worse outcome than a slightly longer
 #: prompt — but asserted in the tests, so growth stays a decision.
-TOKEN_BUDGET = 6000
+#:
+#: Raised from 6000 after a run of twenty real questions against the seeded
+#: database: four of them came back with a confident wrong number, and every
+#: one was a fact the briefing had not been told (which statuses a stock
+#: adjustment actually reaches, that unit_cost is cost rather than price, that
+#: nothing here records a payment, that a recall trace must be a LEFT JOIN).
+#: Traps 15 to 17 are what that run bought, along with the rolling-window and
+#: best-seller paragraphs a second run asked for. The ceiling is a reminder to
+#: keep the prose dense, not a reason to leave a wrong answer in.
+TOKEN_BUDGET = 8500
 
 #: Columns are packed several to a line up to this width. One column per line
 #: is easier to read and costs about two and a half times as much; the packing
@@ -289,11 +298,41 @@ turns a query that runs into a number that lies.
    Always constrain reference_type as well as reference_id; ids collide across
    tables and a join on the id alone will match unrelated rows.
 
+   AND JOIN reference_id TO THE TABLE IT NAMES, NOT THE ONE YOU WANT. This is
+   the single most common way to get a plausible, empty answer here. A
+   'SHIPMENT' movement's reference_id is a shipments.id — it is NOT a
+   sales_orders.id, even though both are integers and the join runs happily
+   and returns nothing. A sales order reaches the ledger only through its
+   shipments:
+
+     stock_movements.reference_id -> shipments.id -> shipments.sales_order_id
+       -> sales_orders.id
+
+   so "what did we sell on completed orders at Ahmedabad" is
+
+     FROM stock_movements sm
+     JOIN shipments s   ON s.id = sm.reference_id AND sm.reference_type = 'SHIPMENT'
+     JOIN sales_orders so ON so.id = s.sales_order_id
+     JOIN warehouses w  ON w.id = so.warehouse_id
+     WHERE sm.movement_type = 'SALE_ISSUE' AND so.status = 'COMPLETED'
+       AND w.name ILIKE '%ahmedabad%'
+
+   The same hop applies to every reference_type: 'GRN' -> goods_receipts.id
+   before purchase_orders, 'TRANSFER' -> stock_transfers.id, 'RECALL' ->
+   recalls.id. Never join reference_id straight to the document one table
+   further out.
+
 10. THE BUSINESS DAY IS ASIA/KOLKATA (core/clock.py::today). occurred_at is
     UTC, so occurred_at::date is a UTC day and files an evening's trade in a
     Mumbai branch under tomorrow. For anything a shopkeeper would call a day,
     group by (occurred_at AT TIME ZONE 'Asia/Kolkata')::date. Use that same
     expression for "today" and "this month" rather than CURRENT_DATE.
+
+    AND A ROLLING WINDOW ENDS TODAY, NOT YESTERDAY. "Last week", "the last 30
+    days", "recently" mean up to and including today, so the upper bound is
+    open: `>= today - 7` with nothing above it. An exclusive `< today` drops
+    this morning's rows, and on a small day that is the whole answer. Only a
+    named calendar period — "in July", "last quarter" — ends before today.
 
 11. NEAR-EXPIRY STOCK IS AVAILABLE BUT UNSHIPPABLE (services/allocation.py).
     Batches are picked first-expiring-first, and anything with fewer than 30
@@ -325,11 +364,131 @@ turns a query that runs into a number that lies.
     really in the schema. Present in the schema is not the same as populated,
     and only this note carries that difference.
 
+14. NOBODY SAYS A PLACE'S FULL NAME. The warehouses are stored as "Ahmedabad
+    Branch", "Bandra Branch (Residential)", "Andheri Branch (Hospital)",
+    "Pune Branch (Commercial)" and "Central Warehouse - Mumbai", and a person
+    asking about them says "Ahmedabad", "Bandra", "the central warehouse".
+
+    So match a place, a supplier or a customer the person named in words with
+        WHERE w.name ILIKE '%ahmedabad%'
+    never with `= 'Ahmedabad'`. Equality returns zero rows, and zero rows for a
+    branch that exists reads as "nothing was sold there" rather than "you typed
+    the name differently" — a wrong answer with no sign that it is wrong. The
+    same goes for suppliers and customers, whose names carry "Pvt Ltd" and
+    "Distributors" that nobody says out loud.
+
+    A code — a SKU, a PO number, a lot code — is different: those are exact by
+    construction, and a person quoting one is reading it off something. Match
+    codes with `=`.
+
+    AND A LOOSE NAME IS NOT A REASON TO ASK BACK. "Insulin" covering two
+    products in the catalogue is not an ambiguity — it is how people talk, and
+    the answer is one ILIKE that covers both, with "all products whose name
+    contains insulin" in the assumptions. Ask back when the MEASURE is unclear
+    (units or rupees, which of three definitions of "late"), never when the
+    only question is how wide a name should reach. A clarification the data
+    could have settled costs the asker a whole round trip to be told what they
+    already meant.
+
+15. ONE STATUS ENUM, FOUR DIFFERENT LIFECYCLES. document_status is a single
+    Postgres type shared by purchase_orders, sales_orders, stock_transfers and
+    stock_adjustments, and each of them walks only part of it. A value that is
+    legal for the type but unreachable for that document parses, runs, and
+    matches nothing — the empty answer with no sign that it is wrong again.
+      purchase_orders    DRAFT -> PENDING_APPROVAL -> APPROVED ->
+                         PARTIALLY_RECEIVED -> RECEIVED | CANCELLED
+      sales_orders       DRAFT -> APPROVED -> ALLOCATED -> SHIPPED (part gone)
+                         -> COMPLETED (all gone) | CANCELLED. Never
+                         PENDING_APPROVAL — a sales order needs no second
+                         signature (services/sales.py).
+      stock_transfers    DRAFT -> PENDING_APPROVAL -> APPROVED -> IN_TRANSIT ->
+                         COMPLETED | CANCELLED
+      stock_adjustments  PENDING_APPROVAL -> COMPLETED | CANCELLED, and NEVER
+                         'APPROVED'. Approving an adjustment is what posts it
+                         to the ledger, and it lands on COMPLETED inside that
+                         same call (services/transfers.py::approve_adjustment).
+                         status='APPROVED' on this table returns nothing, ever.
+      PICKED             is in the enum and no code path anywhere sets it.
+    "Still open", "outstanding", "not done yet" means every status before the
+    terminal one, DRAFT included: a purchase order nobody has approved yet is
+    still an order that has not arrived.
+
+16. NO SELLING PRICE, AND NO RECORD OF WHO HAS PAID. Two separate absences,
+    and each of them turns an unanswerable question into a confident figure.
+
+    (a) stock_movements.unit_cost IS WHAT THE BATCH COST US, copied from
+    lots.purchase_cost (services/ledger.py, seed/history.py). It is never a
+    selling price. quantity * unit_cost is cost of goods sold, and returning
+    that column under the heading 'revenue' produces a large, plausible number
+    that is wrong by the whole margin. Rupee revenue lives only on
+    sales_order_lines.unit_price and sales_orders.grand_total, and by trap 8
+    those cover a dozen demonstration documents rather than the trading
+    history. So "top selling", "best seller", "how much did we sell" over any
+    real period is answered in UNITS — -SUM(quantity) — with that said out
+    loud in the assumptions. Cost is for valuing what is on the shelf.
+
+    THE HARD RULE, because the word "revenue" in a question is very persuasive
+    and this has been got wrong twice: if a query reads SALE_ISSUE movements,
+    then unit_cost, purchase_cost and mrp MUST NOT appear anywhere in its
+    SELECT list. Not multiplied by quantity, not under an honest-looking alias
+    like 'estimated_revenue', not as a COALESCE between the two. Ranking sales
+    by cost puts the products with the dearest batches on top and calls them
+    the best sellers, and nothing on the screen says the column is not money
+    taken. The columns are the product and -SUM(quantity), and the assumption
+    that says so is "this database records no selling price, so this ranks by
+    units sold". Those three columns are also why the other shape fails:
+    joining the ledger to sales_order_lines to hunt for a price is correct SQL
+    that matches almost nothing, and returns an empty best-seller list.
+
+    But do NOT refuse the question merely because it said "revenue". "Top 5 by
+    revenue" has an answerable question inside it — which products moved the
+    most — so answer that one, in units, and put the missing price in the
+    assumptions. Refuse only when nothing answerable is left: "what did we take
+    last month" is about money and has no ranking hiding in it.
+
+    (b) THERE IS NO PAYMENTS TABLE. Nothing in this database records a rupee
+    received or a bill settled; suppliers.payment_terms_days is a contract
+    term, not a balance. "Who owes us money", "outstanding amount", "overdue",
+    "receivables", "unpaid invoices" and every ageing question therefore have
+    no answer here, and SUM(grand_total) is not one: that is what was ordered,
+    paid or not, and it counts the walk-in customer who paid at the counter.
+    Refuse, and say this system tracks stock and documents, not money received.
+
+17. WHAT STOCK IS WORTH HAS EXACTLY ONE BASIS, AND mrp IS NOT IT (api/v1/
+    stock.py, the `stock.view_cost` block). Most balance rows here have no
+    batch cost — the lot is null, or its purchase_cost is — so whatever the
+    fallback is decides most of the answer, and falling back to mrp values four
+    fifths of the shelf at retail. It overstates the holding by about a third
+    and disagrees with the figure the Stock screen shows for the same day.
+    The basis is the batch's own cost, and failing that the weighted average
+    the ledger has already paid for that product:
+      COALESCE(l.purchase_cost,
+               (SELECT SUM(m.quantity * m.unit_cost) / NULLIF(SUM(m.quantity),0)
+                  FROM stock_movements m
+                 WHERE m.product_id = sb.product_id
+                   AND m.quantity > 0 AND m.unit_cost IS NOT NULL))
+    A row with neither contributes nothing, rather than a price it never had.
+
+18. AN AGGREGATE OVER NO ROWS IS NULL, AND NULL ARRIVES AS A BLANK CELL. A
+    single-row SUM or AVG that matched nothing comes back empty rather than as
+    zero, which reads as a broken query rather than as "there were none". Wrap
+    scalar aggregates: COALESCE(SUM(...), 0). Inside a GROUP BY, leave them —
+    there the absent row is itself the honest answer.
+
 SMALLER TRAPS
   * Supplier lead time is purchase_orders.order_date to MIN(goods_receipts.
     received_at) per order, not to the last receipt — a split delivery has
     several GRNs and only the first one is the supplier's speed (ai/leadtime/
     service.py).
+  * "Late", though, is measured against purchase_orders.expected_date, the date
+    the supplier promised. received_at - order_date is lead time, is always the
+    larger number, and reported as days late it slanders every supplier.
+  * products.reorder_point is one number for the whole chain, not one per
+    branch (api/v1/stock.py compares it against total on-hand). Held up against
+    a single branch's stock it flags most of the catalogue.
+  * A movement's warehouse is where the stock is, not where the document was
+    raised: read stock_movements.warehouse_id for "at which branch", and only
+    reach for the document's warehouse when the question is about the document.
   * users.warehouse_id NULL means chain-wide access, not "no branch"
     (models/identity.py).
   * goods_receipt_lines.cross_dock_warehouse_id means the line was sent
@@ -348,6 +507,11 @@ JOIN PATHS worth knowing
   trace_customers):
     lots -> shipment_lines.lot_id -> shipments.id -> sales_orders.id ->
     customers.id
+    LEFT JOIN, every hop. By trap 8 most stock left as bare SALE_ISSUE rows
+    with no shipment behind them, so a recalled batch usually traces to nobody
+    — and inner joins turn "we cannot say where it went" into "this batch was
+    never recalled", which is the answer a recall must never give. List the
+    recalled lot first and let the customer columns come back null.
 
   Who posted a movement, and from which branch:
     stock_movements.created_by -> users.id -> roles.id; users.warehouse_id ->
