@@ -16,7 +16,7 @@ flowchart TB
 
     subgraph host["One host · Docker Compose"]
         CADDY["Caddy<br/>static files + reverse proxy<br/>:80 / :443"]
-        API["FastAPI<br/>uvicorn · 88 operations<br/>:8000"]
+        API["FastAPI<br/>uvicorn · 96 operations<br/>:8000"]
         DB[("PostgreSQL 16<br/>append-only ledger<br/>no published port")]
         MIG["migrate<br/>alembic + seed<br/>runs once, exits"]
     end
@@ -213,9 +213,10 @@ wrong stock on a shelf, **REVIEW** otherwise.
 
 ```mermaid
 flowchart LR
-    PR["pull request"] --> CI["GitHub Actions — CI<br/>ruff · alembic · seed · 284 tests<br/>oxlint · tsc · vite build"]
+    PR["pull request"] --> CI["GitHub Actions — CI<br/>ruff · alembic · seed · 392 tests<br/>oxlint · tsc · vite build"]
     CI -->|"green"| MAIN["merge to main"]
-    MAIN --> BUILD["GitHub Actions — Deploy<br/>build arm64 images"]
+    MAIN --> GATE["Deploy · job 1<br/>calls the same CI workflow<br/>on the exact commit"]
+    GATE -->|"green"| BUILD["Deploy · job 2<br/>build arm64 images"]
     BUILD --> GHCR[("ghcr.io<br/>tagged by commit SHA")]
     GHCR --> EC2["EC2 Graviton · 2 GB<br/>docker compose pull && up"]
 ```

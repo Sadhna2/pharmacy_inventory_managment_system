@@ -1,6 +1,6 @@
 # Entity–Relationship Diagram
 
-40 tables and 2 views, 89 foreign keys. Drawing all of them at once produces
+42 tables and 2 views, 92 foreign keys. Drawing all of them at once produces
 something nobody can read, so they are shown here in five groups that match
 how the schema is actually used. Every relationship below was read from
 `information_schema` on a live database, not from memory.

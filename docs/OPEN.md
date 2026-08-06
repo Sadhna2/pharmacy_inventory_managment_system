@@ -41,7 +41,7 @@ Short list of what is agreed but not yet built. Delete a line when it ships.
 
 - **The test suite no longer touches your data.** `./scripts/test.sh` runs the
   whole thing the way CI does — throwaway `postgres:16` container, migrations
-  from scratch, full seed, API on :8001, 572 backend tests, then the frontend
+  from scratch, full seed, API on :8001, 1,908 backend test cases, then the frontend
   lint/typecheck/build — and deletes the container afterwards. About four
   minutes. `--backend` skips the frontend, `--keep` leaves the database up,
   and extra arguments go to pytest.
@@ -164,10 +164,19 @@ product added afterwards had no distributor forever — and matching narrows its
 candidates to the chosen supplier's products, so those would still not match
 even once the products existed. Now linked per product.
 
-Fix, by hand on the box once this deploys:
+**Fixed on 6 August.** Run through the "Sync catalogue on production"
+workflow, which is `--sync-catalogue` behind a typed confirmation and the
+production concurrency group:
 
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-      exec api python -m app.seed.bootstrap --sync-catalogue
+    products 18 -> 39 (+21), distributor links 18 -> 39 (+21)
+    products with no distributor: 0
+
+Invoice 23 rescanned on the server afterwards and now reads as it does
+locally. The first dispatch refused — `_check_password()` fires under
+`ENV=production`, and all three of my verifications had run under
+`ENV=development`, the one setting where that guard never trips. It wrote
+nothing when it refused. Now the sync path skips that check and instead
+refuses unless all four demo accounts already exist.
 
 Adds what is absent, changes nothing that is present, and says what it did.
 Verified three ways on a throwaway database: a no-op when up to date, repairs
@@ -182,23 +191,27 @@ real order.
 
 ## Next up
 
-- [ ] **Merge PR #19 and deploy.** 32 commits, and none of it is on the
-      server. Worth knowing before you press it: the test → build → deploy
-      gate has never actually run, because it only fires on a push to `main`.
-      CI has exercised the reusable-workflow half; the deploy job waiting on
-      it has not. Watch the first one rather than walking away from it.
+- [x] **Merge PR #19 and deploy.** Done, along with #20 and #21. The
+      test → build → deploy gate had never fired before #19, because it only
+      triggers on a push to `main`; all three have since run green.
+- [ ] **Documentation figures.** Swept on 6 August — every count in the
+      README, SRS, architecture, ER diagram, project report, slides, demo
+      script, product guide and the deck was re-derived from source. Was
+      284–290 tests / 40 tables / 89 foreign keys / 88 operations; is now 392
+      test functions (1,908 cases), 42 tables, 2 views, 92 foreign keys, 96
+      operations across 71 paths. Uncommitted at the time of writing.
 
 ## Not code — yours to do, nothing here is waiting on me
 
 - [ ] **Rotate `GEMINI_API_KEY`** — it leaked into a transcript.
 - [ ] **Set `SELLER_GSTIN` in the server's `~/.env`** to a number with a valid
       check digit. The one there, `27AABCS9876P1ZK`, fails mod-36.
-- [ ] **Enter the five branch GSTINs** after this deploys, in Master data →
-      Locations. The four Maharashtra branches take `27AABCS9876P1ZA`,
-      Ahmedabad takes `24AABCS9876P1ZG`. This is configuration, not a
-      workaround: a GSTIN is a real registration the business holds, so the
-      seed fills them in only on a database it built itself. Until Ahmedabad
-      has its own, its invoices refuse rather than print a wrong one.
+- [x] **The five branch GSTINs.** Filled in on the server and confirmed. The
+      seed backfills any branch that has none and never overwrites one
+      entered by hand, so the catalogue sync on 6 August set them. This is
+      configuration, not a workaround: a GSTIN is a real registration the
+      business holds. Until a branch has its own, its invoices refuse rather
+      than print a wrong one.
 
 ## What deploying PR #19 does to the server's data — checked
 

@@ -7,8 +7,9 @@ deleted, and every balance you see is derived from it.
 **Status:** Layer 0 (spine), Layer 1 (operations), five of the six Layer 2
 analysis features and **invoice intake** are complete and verified, along with
 an administrator settings screen that makes every AI threshold and feature
-switch tunable at runtime. 290 tests, most of them end-to-end against a live
-server and a real Postgres.
+switch tunable at runtime. 392 tests, most of them end-to-end against a live
+server and a real Postgres — 1,908 cases once the parametrised GST sweep is
+counted case by case.
 
 Invoice intake photographs a distributor's invoice and fills in the goods
 receipt — the one place a language model earns its keep here, and the one place
@@ -31,7 +32,7 @@ kept because they explain *why* a given line is written the way it is.
 |---|---|
 | [SRS](docs/SRS.md) | Requirements, scope, assumptions, constraints, use cases, and what is deliberately out of scope |
 | [Architecture](docs/ARCHITECTURE.md) | System, layer, ledger and deployment diagrams; the request path; the stack |
-| [ER diagram](docs/ER-DIAGRAM.md) | 40 tables in five readable groups, read from a live database |
+| [ER diagram](docs/ER-DIAGRAM.md) | 42 tables in five readable groups, read from a live database |
 | [Project report](docs/PROJECT-REPORT.md) | Problem, solution, implementation, testing, **limitations**, future scope |
 | [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | 18-slide review/demo deck, speaker notes in the notes pane |
 | [Slides — source](docs/SLIDES.md) | The same deck as Markdown, for diffing and editing |

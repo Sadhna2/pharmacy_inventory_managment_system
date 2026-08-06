@@ -195,10 +195,10 @@ the records it reads**.
 
 | | |
 |---|---|
-| Database | 40 tables, 2 views, 89 foreign keys |
-| API | 88 operations, OpenAPI documented |
+| Database | 42 tables, 2 views, 92 foreign keys |
+| API | 96 operations, OpenAPI documented |
 | History | ~53,000 ledger movements over 2 years |
-| Tests | **284**, against a real Postgres and a real HTTP server |
+| Tests | **392**, against a real Postgres and a real HTTP server |
 | Deploy | CI builds arm64 images → GHCR → EC2, tagged by commit SHA |
 
 Browser types are generated from the live OpenAPI document — **CI fails if they
