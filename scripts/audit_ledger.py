@@ -27,31 +27,37 @@ def check(ok: bool, key: str, detail: str) -> None:
         findings.append(f"[{key}] {detail}")
 
 
-#: What each posting is allowed to do to a balance. A receipt that could go
-#: negative, or an issue that could go positive, is a sign error that shows up
-#: as stock appearing or vanishing rather than as a crash.
+#: What each posting is allowed to do to a balance.
+#:
+#: Three kinds, and telling them apart is the point. A single-leg type moves
+#: stock in or out of the building and only ever has one sign. A paired type
+#: does not change how much there is at all — it moves the same quantity from
+#: one status to another, so it writes two rows that cancel, and a check
+#: expecting one sign reports every one of them as broken. That is exactly
+#: what the first run of this script did: four "failures" that were all this
+#: classification being wrong rather than the ledger.
 ALWAYS_IN = {
     MovementType.OPENING_BALANCE,
     MovementType.PURCHASE_RECEIPT,
     MovementType.RETURN_IN,
-    MovementType.TRANSFER_RECEIPT,
-    MovementType.QC_RELEASE,
 }
 ALWAYS_OUT = {
     MovementType.SALE_ISSUE,
     MovementType.RETURN_OUT,
-    MovementType.TRANSFER_DISPATCH,
-    MovementType.DAMAGE,
     MovementType.SCRAP,
     MovementType.EXPIRY_WRITEOFF,
 }
-#: Legitimately either way.
-EITHER = {
-    MovementType.ADJUSTMENT,
-    MovementType.CYCLE_COUNT_ADJ,
-    MovementType.STATUS_CHANGE,
+#: Two legs that must cancel: out of one status, into another.
+PAIRED = {
+    MovementType.TRANSFER_DISPATCH,
+    MovementType.TRANSFER_RECEIPT,
+    MovementType.QC_RELEASE,
     MovementType.QC_REJECT,
+    MovementType.DAMAGE,
+    MovementType.STATUS_CHANGE,
 }
+#: Legitimately either way, one leg.
+EITHER = {MovementType.ADJUSTMENT, MovementType.CYCLE_COUNT_ADJ}
 
 with SessionLocal() as db:
     total = db.scalar(select(func.count()).select_from(StockMovement))
@@ -71,6 +77,16 @@ with SessionLocal() as db:
             check(neg == 0, "sign-convention", f"{mt.value}: {neg:,} negative postings")
         if mt in ALWAYS_OUT:
             check(pos == 0, "sign-convention", f"{mt.value}: {pos:,} positive postings")
+        if mt in PAIRED:
+            # Both signs present in equal number, because each event writes
+            # one of each. An unequal count means somebody posted a status
+            # move with only its outbound half, and stock left the building
+            # under a movement type that claims not to remove any.
+            check(
+                pos == neg,
+                "status-moves-are-paired",
+                f"{mt.value}: {pos:,} positive rows against {neg:,} negative",
+            )
         # A zero-quantity posting is a row that changes nothing and can only
         # confuse a reader of the movement history.
         check(zero == 0, "no-zero-postings", f"{mt.value}: {zero:,} zero-quantity rows")
@@ -123,6 +139,19 @@ with SessionLocal() as db:
             "projection-matches-ledger",
             f"product={key[0]} wh={key[1]} lot={key[2]} status={key[3]}: "
             f"ledger says {posted}, balance says {projected}",
+        )
+
+    # 2b. Paired types must net to zero in quantity as well as in row count:
+    #     a status move reclassifies stock, it never creates or destroys any.
+    for mt, net in db.execute(
+        select(StockMovement.movement_type, func.sum(StockMovement.quantity))
+        .where(StockMovement.movement_type.in_(PAIRED))
+        .group_by(StockMovement.movement_type)
+    ).all():
+        check(
+            Decimal(net) == 0,
+            "status-moves-net-zero",
+            f"{mt.value}: legs net to {net}, so stock was created or destroyed",
         )
 
     # 3. Nothing on hand may be negative. A negative balance is stock that was

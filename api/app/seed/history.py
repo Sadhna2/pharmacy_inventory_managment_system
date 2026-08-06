@@ -827,17 +827,36 @@ class Sim:
                 lot = lots[0]
                 qty = min(lot.qty, Decimal("12"))
                 lot.qty -= qty
-                self._emit(
-                    product=product,
-                    warehouse_id=branch.id,
-                    quantity=-qty,
-                    movement_type=MovementType.DAMAGE,
-                    occurred_at=self._stamp(self.today - timedelta(days=23), hour=10),
-                    lot_id=lot.lot_id,
-                    unit_cost=lot.cost,
-                    user_id=self.manager_id,
-                    notes="Cold-chain excursion — carton discarded",
-                )
+                # A pair, not a single leg: out of AVAILABLE and into DAMAGED.
+                # This used to post only the negative side, so the carton left
+                # the system at the moment it spoiled — which made "how much
+                # damaged stock do we hold" and "how much stock was damaged"
+                # disagree, because `showcase.py` records the same event as a
+                # status move. Neither answer was wrong; one movement type
+                # meaning two things was.
+                #
+                # The pair is also what happens. Spoiled stock is still stock
+                # somebody owns: it sits in a corner until it is counted,
+                # claimed against the supplier and then binned, and binning it
+                # is a SCRAP of its own, later. Deleting it here skips all of
+                # that on the day the fridge failed.
+                stamped = self._stamp(self.today - timedelta(days=23), hour=10)
+                for signed, status in (
+                    (-qty, StockStatus.AVAILABLE),
+                    (qty, StockStatus.DAMAGED),
+                ):
+                    self._emit(
+                        product=product,
+                        warehouse_id=branch.id,
+                        quantity=signed,
+                        status=status,
+                        movement_type=MovementType.DAMAGE,
+                        occurred_at=stamped,
+                        lot_id=lot.lot_id,
+                        unit_cost=lot.cost,
+                        user_id=self.manager_id,
+                        notes="Cold-chain excursion — pulled from sale",
+                    )
                 self.stats["anomaly_damage"] += 1
 
     # ------------------------------------------------------------- writing
