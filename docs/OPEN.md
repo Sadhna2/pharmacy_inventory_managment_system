@@ -145,11 +145,48 @@ Short list of what is agreed but not yet built. Delete a line when it ships.
   `seed()` for demo fixtures on an empty one. Guarded by
   `tests/test_seed_convergence.py`.
 
-## Next up — agreed, not yet built
+## Scanning on the server reads correctly and matches badly — cause found
 
-- [ ] **Decide what to do about DAMAGE in the seed** — see the audit below.
-      One line in `history.py`, or a deliberate note that both shapes are
-      intended.
+Not the model. The live reading of `inv_023.png` is byte-for-byte identical to
+the recorded fixture, and extraction runs at `temperature: 0`, so the reading
+is the same wherever it happens. The key is fine.
+
+Production was seeded on **3 August**. On the **4th**, `075bda9` grew the
+catalogue from the twelve products chosen to exercise the system to the fifty
+a distributor's invoice actually lists — and `seed()` never runs twice, so the
+server kept the twelve. Invoice 23 names pantoprazole injection and
+ceftriaxone injection, both added on the 4th. The reader finds them and has
+nothing to match them to.
+
+A second fault underneath it: distributor links were guarded by "does any
+`ProductSupplier` row exist", true the moment the first seed runs. So every
+product added afterwards had no distributor forever — and matching narrows its
+candidates to the chosen supplier's products, so those would still not match
+even once the products existed. Now linked per product.
+
+Fix, by hand on the box once this deploys:
+
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+      exec api python -m app.seed.bootstrap --sync-catalogue
+
+Adds what is absent, changes nothing that is present, and says what it did.
+Verified three ways on a throwaway database: a no-op when up to date, repairs
+six deliberately broken links, and leaves no product without a distributor.
+Deliberately hand-run rather than part of the deploy — a seeder that reaches
+into a live database on its own will eventually put an invented product on a
+real order.
+
+- [ ] Worth a test of its own: nothing in the suite would catch the link guard
+      regressing to all-or-nothing, because a fresh seed links everything
+      either way. It needs a database seeded, broken, and re-synced.
+
+## Next up
+
+- [ ] **Merge PR #19 and deploy.** 32 commits, and none of it is on the
+      server. Worth knowing before you press it: the test → build → deploy
+      gate has never actually run, because it only fires on a push to `main`.
+      CI has exercised the reusable-workflow half; the deploy job waiting on
+      it has not. Watch the first one rather than walking away from it.
 
 ## Not code — yours to do, nothing here is waiting on me
 
