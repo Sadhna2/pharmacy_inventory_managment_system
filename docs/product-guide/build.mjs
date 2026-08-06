@@ -4,26 +4,33 @@
  *
  *   node docs/product-guide/build.mjs
  *
- * `guide.html` is the source you edit. It references shots by name —
- * `src="{{dashboard}}"` — and this turns each one into a data: URI, because a
- * published artifact cannot fetch anything from another host.
+ * `guide.template.html` is the source you edit. It references shots by name —
+ * `src="{{dashboard}}"` — and this turns each one into a data: URI, so the
+ * result depends on nothing: no network, no `shots/` folder beside it, no
+ * second file of any kind. Download it, double-click it, read it.
  *
- * `dist/guide.html` IS COMMITTED, unusually for a build output. Edit the
- * source, then run this, then commit both. The reason is that the source on
- * its own is not readable: every screenshot in it is a `{{placeholder}}`, so
- * anyone who downloads `guide.html` from the repository gets a guide with
- * twenty-four empty boxes where the evidence should be. That happened. The
- * output is the thing people are meant to open, so the repository carries it.
+ * `PRODUCT-GUIDE.html` IS COMMITTED, unusually for a build output. Edit the
+ * template, run this, commit both.
+ *
+ * THE NAMES ARE THE POINT. This used to be `guide.html` building into
+ * `dist/guide.html`, and two files with one name is a trap: the readable one
+ * was three directories down, the unreadable one sat at the obvious path, and
+ * README linked to the unreadable one. Three separate people-including-me
+ * downloaded the wrong file and concluded the screenshots were missing. They
+ * were never missing — all twenty-five are in `shots/`, and the template
+ * simply does not reference them until this script runs.
+ *
+ * So: nothing in this folder is called `guide.html` any more. The one file
+ * that looks like the product guide is the product guide.
  */
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHOTS = join(HERE, "shots");
-const OUT = join(HERE, "dist");
-
-mkdirSync(OUT, { recursive: true });
+const SOURCE = join(HERE, "guide.template.html");
+const DEST = join(HERE, "PRODUCT-GUIDE.html");
 
 const images = Object.fromEntries(
   readdirSync(SHOTS)
@@ -34,7 +41,8 @@ const images = Object.fromEntries(
     ]),
 );
 
-let html = readFileSync(join(HERE, "guide.html"), "utf8");
+const template = readFileSync(SOURCE, "utf8");
+let html = template;
 
 const missing = new Set();
 html = html.replace(/\{\{([a-z0-9-]+)\}\}/g, (whole, name) => {
@@ -50,9 +58,8 @@ if (missing.size) {
   process.exit(1);
 }
 
-const unused = Object.keys(images).filter((k) => !readFileSync(join(HERE, "guide.html"), "utf8").includes(`{{${k}}}`));
+const unused = Object.keys(images).filter((k) => !template.includes(`{{${k}}}`));
 if (unused.length) console.warn(`Not referenced by the guide: ${unused.join(", ")}`);
 
-const dest = join(OUT, "guide.html");
-writeFileSync(dest, html);
-console.log(`${dest}  ${(html.length / 1048576).toFixed(2)} MB  ${Object.keys(images).length} images inlined`);
+writeFileSync(DEST, html);
+console.log(`${DEST}  ${(html.length / 1048576).toFixed(2)} MB  ${Object.keys(images).length} images inlined`);
