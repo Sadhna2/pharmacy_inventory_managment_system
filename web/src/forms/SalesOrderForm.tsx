@@ -23,7 +23,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { cn, money, qty } from "@/lib/format";
-import type { Customer, PlannedOrder, SalesOrderPlan } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import { STATES } from "@/lib/states";
+import type {
+  Customer,
+  PlannedOrder,
+  SalesOrderPlan,
+  Warehouse,
+} from "@/lib/types";
 import {
   FormError,
   FormGrid,
@@ -39,6 +46,163 @@ interface PriceNote {
   last_charged_on?: string | null;
 }
 
+/**
+ * The sentinel the customer Select uses for "this person is not on the list".
+ *
+ * A command sitting in a list of data, which is normally worth avoiding — but
+ * the alternative is a button beside the field that is only ever wanted at the
+ * exact moment someone has just looked down the list and not found the name.
+ * That is where they are looking, so that is where it goes. Not a number, so
+ * it can never collide with a customer id.
+ */
+const WALK_IN = "walk-in";
+
+/**
+ * Name the person at the counter, without leaving the order.
+ *
+ * This writes a real customer rather than stapling a name onto the order,
+ * because the name has to survive: it is on the invoice, it is who a recall
+ * traces to, and the same person coming back next month should be found by
+ * typing three letters rather than entered a second time.
+ *
+ * GSTIN is genuinely optional. A supply to an unregistered person is an
+ * ordinary B2C sale — the invoice carries the tax split with no recipient
+ * registration on it — so an empty box here is a complete answer, not a
+ * skipped field.
+ */
+function WalkInPanel({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (customer: Customer) => void;
+  onCancel: () => void;
+}) {
+  const { user } = useAuth();
+  const [name, setName] = useState("");
+  const [gstin, setGstin] = useState("");
+  const [stateCode, setStateCode] = useState("");
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const warehouses = useQuery({
+    queryKey: ["warehouses", "active"],
+    queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses?is_active=true"),
+  });
+
+  /**
+   * The buyer's state, which decides CGST + SGST against IGST.
+   *
+   * Defaulted to the branch the operator works at: a walk-in is someone
+   * standing in the shop, so the shop's state is right nearly every time. It
+   * stays a picker rather than a fixed label because the exception — a visitor
+   * from another state producing their own GSTIN — is exactly the case where
+   * getting it wrong puts the wrong tax on the invoice.
+   *
+   * A manager has no home branch, so this falls through to the central
+   * warehouse — the same two steps the server takes when the field is left
+   * out, deliberately, because the box has to say what is about to happen.
+   * Leaving `stateCode` empty and letting the Select show its first option
+   * instead put "AN — Andaman & Nicobar Islands" in front of a Mumbai
+   * counter, unasked and about to be submitted.
+   */
+  const home =
+    warehouses.data?.find((w) => w.id === user?.warehouse_id) ??
+    warehouses.data?.find((w) => w.is_central);
+  const effective = stateCode || home?.state_code || "";
+  const prefix = STATES.find((s) => s.code === effective)?.gstPrefix;
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.post<Customer>("/api/v1/customers/walk-in", {
+        name: name.trim(),
+        gstin: gstin.trim() ? gstin.trim().toUpperCase() : null,
+        // Only when it has been chosen. Left out, the server fills it from the
+        // operator's own branch — one rule, on the side that can be trusted to
+        // still be applying it when this form is not the caller.
+        state_code: stateCode || null,
+      }),
+    onSuccess: onCreated,
+    onError: (err) =>
+      setFailed(
+        err instanceof ApiError
+          ? err.problem.detail
+          : "Could not save this customer",
+      ),
+  });
+
+  return (
+    <div className="rounded-lg border border-line bg-muted/40 p-4">
+      <p className="mb-3 text-[13px] font-medium text-ink">
+        New walk-in customer
+      </p>
+      <FormError message={failed} />
+      <FormGrid>
+        <Field label="Name" required>
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="As it should read on the invoice"
+          />
+        </Field>
+        <Field
+          label="State"
+          hint={`Decides the tax split${home ? ` — ${home.name} by default` : ""}`}
+        >
+          <Select
+            value={effective}
+            disabled={!effective}
+            onChange={(e) => setStateCode(e.target.value)}
+          >
+            {/*
+              The warehouses are still in flight, so there is no default to
+              show yet. A Select with an unmatched value shows its first
+              option, and the first state alphabetically is not a sensible
+              thing to have offered anybody.
+            */}
+            {!effective && <option value="">Working out the branch…</option>}
+            {STATES.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.code} — {s.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field
+          label="GSTIN"
+          hint={
+            prefix
+              ? `Optional — a ${effective} registration starts ${prefix}`
+              : "Optional — leave blank for an unregistered buyer"
+          }
+        >
+          <Input
+            value={gstin}
+            onChange={(e) => setGstin(e.target.value.toUpperCase())}
+            placeholder={prefix ? `${prefix}AABCS9876P1Z_` : "15 characters"}
+          />
+        </Field>
+      </FormGrid>
+      <div className="mt-3 flex gap-2">
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!name.trim()}
+          loading={create.isPending}
+          onClick={() => {
+            setFailed(null);
+            create.mutate();
+          }}
+        >
+          Save and select
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function SalesOrderForm({
   open,
   onClose,
@@ -48,6 +212,7 @@ export function SalesOrderForm({
 }) {
   const qc = useQueryClient();
   const [customerId, setCustomerId] = useState("");
+  const [addingWalkIn, setAddingWalkIn] = useState(false);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [priceNotes, setPriceNotes] = useState<Record<number, PriceNote>>({});
@@ -79,6 +244,7 @@ export function SalesOrderForm({
 
   const reset = () => {
     setCustomerId("");
+    setAddingWalkIn(false);
     setNotes("");
     setLines([emptyLine()]);
     setPriceNotes({});
@@ -321,9 +487,14 @@ export function SalesOrderForm({
           <Field label="Customer" required>
             <Select
               value={customerId}
-              onChange={(e) => onCustomerChange(e.target.value)}
+              onChange={(e) =>
+                e.target.value === WALK_IN
+                  ? setAddingWalkIn(true)
+                  : onCustomerChange(e.target.value)
+              }
             >
               <option value="">Select a customer…</option>
+              <option value={WALK_IN}>＋ Walk-in customer…</option>
               {customers.data?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -341,6 +512,25 @@ export function SalesOrderForm({
             />
           </Field>
         </FormGrid>
+
+        {addingWalkIn && (
+          <WalkInPanel
+            onCancel={() => setAddingWalkIn(false)}
+            onCreated={(created) => {
+              setAddingWalkIn(false);
+              // Into the list before it is selected, so the Select has an
+              // option to match and does not fall back to its placeholder for
+              // the moment between the POST and the refetch landing.
+              qc.setQueryData<Customer[]>(["customers", "active"], (list) =>
+                [...(list ?? []), created].sort((a, b) =>
+                  a.name.localeCompare(b.name),
+                ),
+              );
+              void qc.invalidateQueries({ queryKey: ["customers"] });
+              onCustomerChange(String(created.id));
+            }}
+          />
+        )}
 
         <LineItems
           lines={lines}

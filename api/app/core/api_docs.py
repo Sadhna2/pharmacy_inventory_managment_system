@@ -437,15 +437,24 @@ USED_BY: dict[str, tuple[str, str]] = {
         "cannot be removed without orphaning that history.",
     ),
     "GET /api/v1/customers": (
-        "Setup → Master data → Customers; picker in Sales",
-        "Institutional buyers — hospitals and clinics — with the GSTIN and "
-        "state code that decide the GST split on their orders.",
+        "Setup → Master data → Institutions and Retail buyers; picker in Sales",
+        "Buyers with the GSTIN and state code that decide the GST split on "
+        "their orders. `is_institutional` separates hospitals and clinics from "
+        "counter trade — the two are kept as separate lists because they grow "
+        "at very different rates. `q` searches name, code and GSTIN.",
     ),
     "POST /api/v1/customers": (
         "Setup → Master data → New customer",
         "Creates a customer. GSTIN is optional, since not every institutional "
         "buyer is registered; the state code is not, because the GST split on "
         "their orders depends on it.",
+    ),
+    "POST /api/v1/customers/walk-in": (
+        "Operations → Sales → New order → Walk-in customer",
+        "Names the person at the counter without leaving the order. The code "
+        "is allocated by the server rather than asked for, and the state — "
+        "which decides CGST+SGST against IGST — defaults to the branch. "
+        "Guarded by so.create, because this is part of ringing up a sale.",
     ),
     "PATCH /api/v1/customers/{customer_id}": (
         "Setup → Master data → Edit customer",

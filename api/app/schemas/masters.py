@@ -2,14 +2,13 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.services import gst
-
 from app.models.enums import (
     DrugSchedule,
     SourcingPolicy,
     StorageCondition,
     TrackingMode,
 )
+from app.services import gst
 
 
 class CategoryOut(BaseModel):
@@ -393,6 +392,37 @@ class CustomerIn(BaseModel):
     address: str | None = None
     credit_limit: Decimal = Field(Decimal("0"), ge=0)
     is_active: bool = True
+
+
+class WalkInCustomerIn(BaseModel):
+    """A person at the counter, captured while the sale is being rung up.
+
+    Deliberately not `CustomerIn`. That schema asks for a code, and the code is
+    the one thing the person taking the order must not invent — two counters
+    inventing `CUST-005` on the same afternoon is a conflict the customer has
+    to stand and watch. The server allocates it from the same gap-free counter
+    the documents use.
+
+    A blank GSTIN is the ordinary case, not a missing field: a supply to an
+    unregistered person is a perfectly legal B2C sale and the invoice carries
+    the tax split without a recipient GSTIN. Asking for one would make the
+    common case look like an error.
+    """
+
+    model_config = ConfigDict(json_schema_extra={"example": {
+            "name": "Ramesh Kulkarni",
+            "state_code": "MH",
+    }})
+
+    name: str = Field(min_length=1, max_length=255)
+    gstin: str | None = Field(None, min_length=15, max_length=15)
+    #: Where the buyer is, which decides CGST+SGST against IGST. Left out it
+    #: becomes the branch's own state — the counter sale, and the answer that
+    #: is right nearly every time.
+    state_code: str | None = Field(None, min_length=2, max_length=2)
+    phone: str | None = Field(None, max_length=32)
+
+    _check_gstin = model_validator(mode="after")(check_branch_gstin)
 
 
 class CustomerUpdate(BaseModel):

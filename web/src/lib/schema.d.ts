@@ -551,9 +551,9 @@ export interface paths {
          * List Customers
          * @description ---
          *
-         *     **Used by:** Setup → Master data → Customers; picker in Sales
+         *     **Used by:** Setup → Master data → Institutions and Retail buyers; picker in Sales
          *
-         *     Institutional buyers — hospitals and clinics — with the GSTIN and state code that decide the GST split on their orders.
+         *     Buyers with the GSTIN and state code that decide the GST split on their orders. `is_institutional` separates hospitals and clinics from counter trade — the two are kept as separate lists because they grow at very different rates. `q` searches name, code and GSTIN.
          */
         get: operations["list_customers_api_v1_customers_get"];
         put?: never;
@@ -566,6 +566,42 @@ export interface paths {
          *     Creates a customer. GSTIN is optional, since not every institutional buyer is registered; the state code is not, because the GST split on their orders depends on it.
          */
         post: operations["create_customer_api_v1_customers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/walk-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Walk In Customer
+         * @description Capture the person at the counter without leaving the sales order.
+         *
+         *     Guarded by `so.create` rather than `master.manage`, because this is part of
+         *     ringing up a sale rather than an act of master-data administration. Whoever
+         *     may raise the order may name the buyer on it; anything more — a credit
+         *     limit, an address, retiring the record — still needs the master data screen.
+         *
+         *     The record is a real customer, so the sale has a real counterparty on it
+         *     and the same person coming back next month is found by name rather than
+         *     entered twice. What it is not is institutional: no credit limit, so the
+         *     order is settled at the counter, which is what a walk-in is.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → New order → Walk-in customer
+         *
+         *     Names the person at the counter without leaving the order. The code is allocated by the server rather than asked for, and the state — which decides CGST+SGST against IGST — defaults to the branch. Guarded by so.create, because this is part of ringing up a sale.
+         */
+        post: operations["create_walk_in_customer_api_v1_customers_walk_in_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -896,6 +932,47 @@ export interface paths {
          *     Marks the order CANCELLED. Refused once it is fully received, or already cancelled. A partially-received order can still be cancelled — that is the ordinary case of a distributor short-shipping and the remainder never coming.
          */
         post: operations["cancel_po_api_v1_purchase_orders__po_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Po Invoice
+         * @description Hand back the file exactly as it was uploaded.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → Receive goods
+         *
+         *     Hands back the stored invoice as it was uploaded, named for the order. Offered on the receiving screen when the order carries one, so the cartons can be checked against the paper they came with.
+         */
+        get: operations["download_po_invoice_api_v1_purchase_orders__po_id__invoice_get"];
+        /**
+         * Store Po Invoice
+         * @description Keep the invoice the order was raised from.
+         *
+         *     PUT rather than POST because there is one per order: uploading again
+         *     replaces it. A second scan of the same delivery is a correction, and two
+         *     files against one order would leave whoever opens it later choosing
+         *     between them with nothing to choose on.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → New order
+         *
+         *     Keeps the distributor's invoice against the order it raised. One per order — uploading again replaces it, because a second scan of the same delivery is a correction rather than a second document.
+         */
+        put: operations["store_po_invoice_api_v1_purchase_orders__po_id__invoice_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2099,6 +2176,11 @@ export interface components {
             /** Reason Code */
             reason_code: string;
             status: components["schemas"]["DocumentStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Created By */
             created_by: number;
             /** Created By Name */
@@ -2415,6 +2497,14 @@ export interface components {
             supplier_id?: number | null;
             /** Purchase Order Id */
             purchase_order_id?: number | null;
+        };
+        /** Body_store_po_invoice_api_v1_purchase_orders__po_id__invoice_put */
+        Body_store_po_invoice_api_v1_purchase_orders__po_id__invoice_put: {
+            /**
+             * File
+             * @description The distributor's invoice
+             */
+            file: string;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -3764,6 +3854,11 @@ export interface components {
              * Format: date
              */
             order_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Expected Date */
             expected_date?: string | null;
             /** Notes */
@@ -3778,6 +3873,11 @@ export interface components {
             approved_by_name?: string | null;
             /** Approved At */
             approved_at?: string | null;
+            /**
+             * Has Invoice
+             * @default false
+             */
+            has_invoice: boolean;
             /**
              * Lines
              * @default []
@@ -4157,6 +4257,11 @@ export interface components {
              * Format: date
              */
             order_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Notes */
             notes?: string | null;
             /**
@@ -4521,6 +4626,20 @@ export interface components {
          */
         TrackingMode: "NONE" | "LOT" | "LOT_EXPIRY" | "SERIAL";
         /**
+         * TransferBatchOut
+         * @description A batch that actually left, and how much of it.
+         */
+        TransferBatchOut: {
+            /** Lot Id */
+            lot_id?: number | null;
+            /** Lot Code */
+            lot_code?: string | null;
+            /** Expiry Date */
+            expiry_date?: string | null;
+            /** Quantity */
+            quantity: string;
+        };
+        /**
          * TransferIn
          * @example {
          *       "from_warehouse_id": 1,
@@ -4577,6 +4696,11 @@ export interface components {
             quantity: string;
             /** Qty Received */
             qty_received: string;
+            /**
+             * Batches
+             * @default []
+             */
+            batches: components["schemas"]["TransferBatchOut"][];
         };
         /** TransferOut */
         TransferOut: {
@@ -4601,6 +4725,11 @@ export interface components {
             approved_by?: number | null;
             /** Approved By Name */
             approved_by_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Dispatched At */
             dispatched_at?: string | null;
             /** Received At */
@@ -4789,6 +4918,35 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * WalkInCustomerIn
+         * @description A person at the counter, captured while the sale is being rung up.
+         *
+         *     Deliberately not `CustomerIn`. That schema asks for a code, and the code is
+         *     the one thing the person taking the order must not invent — two counters
+         *     inventing `CUST-005` on the same afternoon is a conflict the customer has
+         *     to stand and watch. The server allocates it from the same gap-free counter
+         *     the documents use.
+         *
+         *     A blank GSTIN is the ordinary case, not a missing field: a supply to an
+         *     unregistered person is a perfectly legal B2C sale and the invoice carries
+         *     the tax split without a recipient GSTIN. Asking for one would make the
+         *     common case look like an error.
+         * @example {
+         *       "name": "Ramesh Kulkarni",
+         *       "state_code": "MH"
+         *     }
+         */
+        WalkInCustomerIn: {
+            /** Name */
+            name: string;
+            /** Gstin */
+            gstin?: string | null;
+            /** State Code */
+            state_code?: string | null;
+            /** Phone */
+            phone?: string | null;
         };
         /**
          * WarehouseIn
@@ -5051,6 +5209,8 @@ export interface operations {
                 tracking_mode?: components["schemas"]["TrackingMode"] | null;
                 is_active?: boolean | null;
                 below_reorder?: boolean;
+                /** @description Count stock only at this warehouse. Filters the quantities, not the catalogue — every product still comes back, and one held nowhere else comes back as zero. */
+                stock_at?: number | null;
                 page?: number;
                 size?: number;
             };
@@ -5660,6 +5820,8 @@ export interface operations {
     list_suppliers_api_v1_suppliers_get: {
         parameters: {
             query?: {
+                /** @description Search name, code or GSTIN */
+                q?: string | null;
                 is_active?: boolean | null;
             };
             header?: never;
@@ -5790,6 +5952,8 @@ export interface operations {
     list_customers_api_v1_customers_get: {
         parameters: {
             query?: {
+                /** @description Search name, code or GSTIN */
+                q?: string | null;
                 is_institutional?: boolean | null;
                 is_active?: boolean | null;
             };
@@ -5829,6 +5993,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CustomerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_walk_in_customer_api_v1_customers_walk_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalkInCustomerIn"];
             };
         };
         responses: {
@@ -6371,6 +6568,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_po_invoice_api_v1_purchase_orders__po_id__invoice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_po_invoice_api_v1_purchase_orders__po_id__invoice_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_store_po_invoice_api_v1_purchase_orders__po_id__invoice_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
                 };
             };
             /** @description Validation Error */
