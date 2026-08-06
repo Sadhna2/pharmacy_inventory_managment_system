@@ -48,12 +48,13 @@ from app.schemas.documents import (
     SalesOrderOut,
     SalesOrderPlanIn,
     SalesOrderPlanOut,
-    SuggestedPriceOut,
     ShipmentOut,
+    SuggestedPriceOut,
     TransferIn,
     TransferOut,
 )
 from app.services import audit, invoice_html, procurement, recall, sales, transfers
+from app.services.gst import gstin_state_matches
 
 
 def customer_may_see(user: User, order: "SalesOrder") -> bool:
@@ -530,19 +531,53 @@ def sales_order_invoice(
     # something an unauthorised caller gets to learn, and a scope check that
     # can be pre-empted by a config check is not reliably a scope check.
     # Whose registration this supply was made under. GST registers per state,
-    # so the branch the goods left is the registered person here; the firm's
-    # configured GSTIN is the fallback for a chain that has only ever traded
-    # in one state and never recorded a branch registration.
-    registration = (so.warehouse.gstin or "").strip() or settings.seller_gstin
-    if not (settings.seller_legal_name and registration):
-        # Refusing beats emitting a document captioned TAX INVOICE with the
-        # registration missing: the caption is the claim, and an invoice
-        # without the supplier's GSTIN is not one.
+    # so the branch the goods left is the registered person here.
+    branch_gstin = (so.warehouse.gstin or "").strip()
+    firm_gstin = (settings.seller_gstin or "").strip()
+
+    # The firm's configured GSTIN stands in for a chain that has only ever
+    # traded in the one state it registered in. That condition was written into
+    # the comment here the day the column arrived, and never actually tested:
+    # the fallback was unconditional, so a Gujarat branch borrowed the
+    # Maharashtra registration and printed "State: GJ (24)" beside a number
+    # opening 27. The document contradicted itself on its own face, and no
+    # buyer could have claimed input credit against it.
+    #
+    # So the condition is checked now. Only an outright match substitutes:
+    # `gstin_state_matches` answers None when it cannot tell, and a
+    # registration nobody can confirm belongs to this state is not one to print
+    # under a TAX INVOICE caption. Declining to borrow is not the same as
+    # asserting a mismatch — it leaves the number to the branch, which is where
+    # it was always going to have to come from.
+    registration = branch_gstin
+    if not registration and gstin_state_matches(firm_gstin, so.warehouse.state_code):
+        registration = firm_gstin
+
+    # Refusing beats emitting a document captioned TAX INVOICE with the wrong
+    # registration on it, or none: the caption is the claim, and an invoice
+    # carrying another state's GSTIN is not one the buyer can use.
+    if not registration:
+        if firm_gstin:
+            raise ConflictError(
+                f"No GSTIN is recorded for {so.warehouse.name}, and the firm's "
+                f"configured registration ({firm_gstin}) is held in another "
+                f"state, so it cannot stand in for this one. A branch trading "
+                f"in {so.warehouse.state_code} is a separately registered "
+                f"person under GST. Set {so.warehouse.name}'s own GSTIN in "
+                f"Master data."
+            )
         raise ConflictError(
             f"No GSTIN is recorded for {so.warehouse.name} and none is "
             f"configured for the firm, so this supply cannot be invoiced. "
             f"Set the branch's GSTIN in Master data, or SELLER_LEGAL_NAME "
             f"and SELLER_GSTIN for the firm."
+        )
+
+    if not settings.seller_legal_name:
+        raise ConflictError(
+            "No SELLER_LEGAL_NAME is configured, so this supply cannot be "
+            "invoiced: rule 46(b) asks for the supplier's name and address "
+            "alongside the registration."
         )
 
     if so.status not in INVOICEABLE:

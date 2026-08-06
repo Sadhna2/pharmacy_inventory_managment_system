@@ -397,10 +397,64 @@ def test_a_branch_with_its_own_registration_overrides_the_firms(fetch):
 def test_the_firms_registration_stands_in_for_a_branch_with_none_recorded(fetch):
     """Every row held null the day the column was added, and a chain that has
     only ever traded in one state has no reason to fill it in. Those invoices
-    must keep printing exactly what they printed before."""
+    must keep printing exactly what they printed before.
+
+    Note what makes this safe and the test below unsafe: WAREHOUSE is in
+    Maharashtra and SELLER_GSTIN opens with 27. Same state, same registered
+    person, nothing borrowed."""
     body = fetch(_order()).text  # WAREHOUSE carries no GSTIN
 
     assert SELLER_GSTIN in body
+
+
+def test_the_firms_registration_never_stands_in_across_a_state_line(
+    fetch, monkeypatch
+):
+    """The fallback's own precondition, finally enforced.
+
+    "A chain that has only ever traded in one state" is the case the fallback
+    was written for, and for a long time the code did not check it — the
+    substitution was unconditional. So an Ahmedabad branch with its GSTIN not
+    yet filled in printed the Maharashtra number: "State: GJ (24)" beside a
+    registration opening 27, on a document captioned TAX INVOICE. That is not
+    a cosmetic disagreement. The buyer's input credit is claimed against the
+    supplier's GSTIN, and this one names a registered person who did not make
+    the supply.
+
+    Refusing puts it where somebody can fix it, and the message says how.
+    """
+    monkeypatch.setattr(settings, "seller_gstin", SELLER_GSTIN)  # 27 — Maharashtra
+    gujarat = _Warehouse(
+        name="Ahmedabad Branch",
+        address="Plot 22, Naroda GIDC\nAhmedabad 382330",
+        state_code="GJ",
+    )  # no GSTIN of its own yet
+
+    response = fetch(_order(warehouse=gujarat, is_interstate=True, place_of_supply="MH"))
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "Ahmedabad Branch" in detail
+    assert "Master data" in detail, "the refusal has to say where to fix it"
+    # Nothing resembling the document, and above all not the wrong number
+    # rendered into it.
+    assert "TAX INVOICE" not in response.text
+
+
+def test_an_unrecognised_state_does_not_borrow_a_registration_either(
+    fetch, monkeypatch
+):
+    """`gstin_state_matches` answers None when it cannot tell.
+
+    Declining to substitute is not the same as declaring a mismatch: the route
+    makes no claim about a state it does not recognise, it simply will not
+    print a registration it cannot confirm belongs there. Silence reading as
+    consent is what produced the Gujarat invoice above.
+    """
+    monkeypatch.setattr(settings, "seller_gstin", SELLER_GSTIN)
+    nowhere = _Warehouse("Depot", "Somewhere", "ZZ")
+
+    assert fetch(_order(warehouse=nowhere)).status_code == 409
 
 
 def test_a_branch_registration_alone_is_enough_to_issue(fetch, monkeypatch):
