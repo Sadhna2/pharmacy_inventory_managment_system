@@ -23,8 +23,23 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # Nothing below runs until the whole suite is green on this exact commit.
+  #
+  # Deploy used to trigger on a push to main alongside CI and wait only on its
+  # own build job, so the two raced: a commit whose tests failed was published
+  # to the registry and rolled out to the server regardless, and the only sign
+  # was a red X beside a working deployment.
+  #
+  # Calling CI rather than copying its steps, so there is one definition of
+  # "the tests pass" and no chance of the gate drifting from what a pull
+  # request is checked against.
+  test:
+    name: CI must pass first
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build and publish arm64 images
+    needs: test
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
