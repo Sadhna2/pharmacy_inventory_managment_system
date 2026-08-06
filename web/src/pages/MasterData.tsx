@@ -750,34 +750,49 @@ export function MasterData() {
         />
       </Card>
 
-      <SupplierForm
-        open={formOpen && tab === "suppliers"}
-        supplier={(editing as Supplier | null) ?? null}
-        onClose={closeForm}
-      />
-      <CustomerForm
-        open={formOpen && (tab === "customers" || tab === "retail")}
-        customer={(editing as Customer | null) ?? null}
-        institutionalByDefault={tab === "customers"}
-        onClose={closeForm}
-      />
-      <WarehouseForm
-        open={formOpen && tab === "warehouses"}
-        warehouse={(editing as Warehouse | null) ?? null}
-        onClose={closeForm}
-      />
-      <BinForm
-        open={formOpen && tab === "bins"}
-        bin={(editing as Bin | null) ?? null}
-        warehouseId={binWarehouseId}
-        onClose={closeForm}
-      />
-      <CategoryForm
-        open={formOpen && tab === "categories"}
-        category={(editing as Category | null) ?? null}
-        onClose={closeForm}
-      />
-      <UomForm open={formOpen && tab === "uoms"} onClose={closeForm} />
+      {/* Mounted only while open, never merely hidden. `Modal` unmounts its
+          own subtree when `open` goes false, but the form component wrapping
+          it does not go anywhere — so its useState survives being closed and
+          the next open shows the last one's contents. Conditional mounting is
+          what makes "close" mean "discard". */}
+      {formOpen && tab === "suppliers" && (
+        <SupplierForm
+          open
+          supplier={(editing as Supplier | null) ?? null}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && (tab === "customers" || tab === "retail") && (
+        <CustomerForm
+          open
+          customer={(editing as Customer | null) ?? null}
+          institutionalByDefault={tab === "customers"}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "warehouses" && (
+        <WarehouseForm
+          open
+          warehouse={(editing as Warehouse | null) ?? null}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "bins" && (
+        <BinForm
+          open
+          bin={(editing as Bin | null) ?? null}
+          warehouseId={binWarehouseId}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "categories" && (
+        <CategoryForm
+          open
+          category={(editing as Category | null) ?? null}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "uoms" && <UomForm open onClose={closeForm} />}
 
       <ConfirmDialog
         open={retiring !== null}

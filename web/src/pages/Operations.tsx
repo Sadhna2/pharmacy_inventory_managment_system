@@ -455,8 +455,8 @@ export function PurchaseOrders() {
         />
       </Card>
 
-      <PurchaseOrderForm open={formOpen} onClose={() => setFormOpen(false)} />
-      <GoodsReceiptForm open={grnOpen} onClose={() => setGrnOpen(false)} />
+      {formOpen && <PurchaseOrderForm open onClose={() => setFormOpen(false)} />}
+      {grnOpen && <GoodsReceiptForm open onClose={() => setGrnOpen(false)} />}
 
       <Modal
         open={acting !== null}
@@ -733,7 +733,7 @@ export function SalesOrders() {
         />
       </Card>
 
-      <SalesOrderForm open={formOpen} onClose={() => setFormOpen(false)} />
+      {formOpen && <SalesOrderForm open onClose={() => setFormOpen(false)} />}
 
       <Modal
         open={acting !== null}
@@ -1055,7 +1055,7 @@ export function Transfers() {
         />
       </Card>
 
-      <TransferForm open={formOpen} onClose={() => setFormOpen(false)} />
+      {formOpen && <TransferForm open onClose={() => setFormOpen(false)} />}
 
       <Modal
         open={acting !== null}
@@ -1375,7 +1375,7 @@ export function Adjustments() {
         />
       </Card>
 
-      <AdjustmentForm open={formOpen} onClose={() => setFormOpen(false)} />
+      {formOpen && <AdjustmentForm open onClose={() => setFormOpen(false)} />}
 
       <ConfirmDialog
         open={cancelling !== null}

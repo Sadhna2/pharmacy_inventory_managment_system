@@ -286,6 +286,16 @@ export function Modal({
     };
   }, [open, onClose]);
 
+  // Unmounts the dialog, but NOT the component that rendered it. A form
+  // holding draft state keeps that state in its own body, above this call, so
+  // closing hides the dialog and preserves everything typed into it — reopen
+  // and the last attempt is still there. Scanning an invoice, going back, and
+  // opening the scanner again showed the previous scan's lines.
+  //
+  // Nothing here can fix that: by the time this runs, the state belongs to a
+  // component further up. So a form with draft state is mounted conditionally
+  // by its caller — `{open && <Form open … />}` — and closing it discards the
+  // draft because the component goes away.
   if (!open) return null;
 
   return (
