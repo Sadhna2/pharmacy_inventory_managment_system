@@ -420,7 +420,12 @@ class WalkInCustomerIn(BaseModel):
     #: becomes the branch's own state — the counter sale, and the answer that
     #: is right nearly every time.
     state_code: str | None = Field(None, min_length=2, max_length=2)
+    #: The only record of how to reach this buyer. An institution is on file
+    #: with an account manager and a purchase order behind it; the person at
+    #: the counter is not, so if a batch they were sold is recalled next month
+    #: these two fields are the entire means of telling them.
     phone: str | None = Field(None, max_length=32)
+    email: str | None = Field(None, max_length=255)
 
     _check_gstin = model_validator(mode="after")(check_branch_gstin)
 

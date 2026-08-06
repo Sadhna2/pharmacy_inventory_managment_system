@@ -653,7 +653,10 @@ def create_walk_in_customer(
         is_institutional=False,
         gstin=payload.gstin or None,
         state_code=state_code,
-        phone=payload.phone,
+        # Blank rather than empty string, so "not recorded" is one value in
+        # the column and not two. The invoice prints these only when set.
+        phone=(payload.phone or "").strip() or None,
+        email=(payload.email or "").strip() or None,
     )
     db.add(customer)
     db.flush()

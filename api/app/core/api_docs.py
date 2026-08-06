@@ -452,6 +452,9 @@ USED_BY: dict[str, tuple[str, str]] = {
     "POST /api/v1/customers/walk-in": (
         "Operations → Sales → New order → Walk-in customer",
         "Names the person at the counter without leaving the order. The code "
+        "Phone and email are optional but asked for, because a counter buyer "
+        "is the party with no other record behind them and these are the only "
+        "way to reach them if a batch is recalled. The code "
         "is allocated by the server rather than asked for, and the state — "
         "which decides CGST+SGST against IGST — defaults to the branch. "
         "Guarded by so.create, because this is part of ringing up a sale.",

@@ -98,6 +98,41 @@ def test_a_walk_in_needs_only_a_name(client, manager, made):
     assert body["credit_limit"] in ("0", "0.00"), "a walk-in settles at the counter"
 
 
+def test_contact_details_are_kept_when_given(client, manager, made):
+    """The counter buyer is the party with no other record behind them.
+
+    An institution has an account manager and a purchase order; this person
+    has whatever was typed here. If a batch they were sold is recalled next
+    month, these two fields are the entire means of telling them — so they
+    have to survive the round trip, not merely be accepted.
+    """
+    created = walk_in(
+        client,
+        manager,
+        made,
+        phone="+91 98204 33127",
+        email="ramesh@example.com",
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+
+    assert body["phone"] == "+91 98204 33127"
+    assert body["email"] == "ramesh@example.com"
+
+
+def test_a_buyer_who_gives_no_number_is_stored_as_having_none(
+    client, manager, made
+):
+    """Blank rather than empty string, so "not recorded" is one value in the
+    column and not two — the invoice decides whether to print a contact line
+    by asking whether there is one."""
+    created = walk_in(client, manager, made, phone="   ", email="")
+    assert created.status_code == 201, created.text
+
+    assert created.json()["phone"] is None
+    assert created.json()["email"] is None
+
+
 def test_the_code_is_allocated_rather_than_asked_for(client, manager, made):
     first = walk_in(client, manager, made).json()
     second = walk_in(client, manager, made).json()

@@ -81,6 +81,8 @@ function WalkInPanel({
   const [name, setName] = useState("");
   const [gstin, setGstin] = useState("");
   const [stateCode, setStateCode] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [failed, setFailed] = useState<string | null>(null);
 
   const warehouses = useQuery({
@@ -119,6 +121,8 @@ function WalkInPanel({
         // operator's own branch — one rule, on the side that can be trusted to
         // still be applying it when this form is not the caller.
         state_code: stateCode || null,
+        phone: phone.trim() || null,
+        email: email.trim() || null,
       }),
     onSuccess: onCreated,
     onError: (err) =>
@@ -179,6 +183,30 @@ function WalkInPanel({
             value={gstin}
             onChange={(e) => setGstin(e.target.value.toUpperCase())}
             placeholder={prefix ? `${prefix}AABCS9876P1Z_` : "15 characters"}
+          />
+        </Field>
+        {/*
+          The only record of how to reach this buyer. An institution is on file
+          with an account manager and a purchase order behind it; the person at
+          the counter is not, so if a batch they were sold is recalled next
+          month these two fields are the whole means of telling them. Optional,
+          because a counter sale cannot be held up over a phone number nobody
+          wants to give — but asked for, because nobody fills them in later.
+        */}
+        <Field label="Phone" hint="Optional — how to reach them about a recall">
+          <Input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+91 98204 33127"
+          />
+        </Field>
+        <Field label="Email" hint="Optional — where the invoice can be sent">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@example.com"
           />
         </Field>
       </FormGrid>

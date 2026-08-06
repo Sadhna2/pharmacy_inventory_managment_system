@@ -599,7 +599,7 @@ export interface paths {
          *
          *     **Used by:** Operations → Sales → New order → Walk-in customer
          *
-         *     Names the person at the counter without leaving the order. The code is allocated by the server rather than asked for, and the state — which decides CGST+SGST against IGST — defaults to the branch. Guarded by so.create, because this is part of ringing up a sale.
+         *     Names the person at the counter without leaving the order. The code Phone and email are optional but asked for, because a counter buyer is the party with no other record behind them and these are the only way to reach them if a batch is recalled. The code is allocated by the server rather than asked for, and the state — which decides CGST+SGST against IGST — defaults to the branch. Guarded by so.create, because this is part of ringing up a sale.
          */
         post: operations["create_walk_in_customer_api_v1_customers_walk_in_post"];
         delete?: never;
@@ -4947,6 +4947,8 @@ export interface components {
             state_code?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Email */
+            email?: string | null;
         };
         /**
          * WarehouseIn
