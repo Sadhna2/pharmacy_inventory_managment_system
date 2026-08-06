@@ -860,6 +860,33 @@ def _sync_catalogue(db: Session) -> None:
     stock are skipped once they exist, and nothing is ever updated — a price
     someone corrected by hand stays corrected.
     """
+    # `_check_password()` is deliberately not run for this path, and this is
+    # what replaces it. That guard exists to stop `seed()` creating the four
+    # well-known demo accounts with a publicly known password on a machine that
+    # is not a development box — a real risk, and the reason it refuses when
+    # ENV=production and SEED_PASSWORD is unset. But it refuses *before*
+    # knowing whether any account would be created, and on the server
+    # SEED_PASSWORD reaches the migrate container and not this one, so the
+    # first real run of this command was stopped by a check about accounts
+    # while trying to add products.
+    #
+    # Skipping the check outright would trade a precise guarantee for a
+    # convenience. So the guarantee is made directly instead: if every demo
+    # account already exists, the user block inside `seed()` is a no-op by its
+    # own per-email guard, and no password can be set by anything below. If one
+    # is missing, this refuses — because then the original concern is live.
+    missing = [
+        email
+        for email, *_ in USER_DEFS
+        if db.scalar(select(User.id).where(User.email == email)) is None
+    ]
+    if missing:
+        raise SystemExit(
+            "Refusing to sync: these accounts do not exist yet, so seeding "
+            f"would create them with whatever password is configured — {', '.join(missing)}. "
+            "This command is for a database that is already seeded."
+        )
+
     before = db.scalar(select(func.count()).select_from(Product)) or 0
     links_before = db.scalar(select(func.count()).select_from(ProductSupplier)) or 0
 
@@ -880,7 +907,12 @@ def _sync_catalogue(db: Session) -> None:
 def main() -> None:
     reset_passwords = "--reset-passwords" in sys.argv
     sync_catalogue = "--sync-catalogue" in sys.argv
-    _check_password()
+    # Not for --sync-catalogue: that path makes the same guarantee more
+    # precisely, by refusing unless every demo account already exists. See
+    # _sync_catalogue(). This check has to run before a session is opened and
+    # so cannot tell whether an account would actually be created.
+    if not sync_catalogue:
+        _check_password()
     db = SessionLocal()
     try:
         # Before the early return, and deliberately: this is the work that has
