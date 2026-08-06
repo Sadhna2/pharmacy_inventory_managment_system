@@ -1,0 +1,184 @@
+# Writes the selling firm's own details into the server's `~/.env`. Run by hand.
+#
+# WHY THIS IS A WORKFLOW RATHER THAN AN SSH SESSION
+# -------------------------------------------------
+# The bug this fixes is a hand-typed GSTIN with one wrong character:
+# `27AABCS9876P1ZK`, where the fifteenth character is a mod-36 checksum over
+# the other fourteen and the correct one is `A`. Nothing on the box checked it,
+# so the mistake sat in a file until the tax invoice refused to print.
+#
+# Editing that value by hand a second time is the same move that caused it.
+# This runs the number through the application's own validator *before* writing
+# anything, and reads the API's boot report back afterwards — so the run either
+# ends with "tax invoicing enabled" on screen, or it fails and the old file is
+# still in place. A demo is a bad time to discover which.
+#
+# WHY THESE VALUES ARE NOT SECRETS
+# --------------------------------
+# A GSTIN, a registered address and a phone number are printed at the top of
+# every tax invoice handed to a customer. They are inputs, not credentials, and
+# writing them in plain sight is correct. GEMINI_API_KEY is deliberately absent
+# from this workflow: that one is a credential and belongs in a GitHub secret
+# and in a hand-edited line on the box, not in a file written by CI.
+
+name: Set seller details on production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type APPLY to confirm this rewrites the production ~/.env'
+        required: true
+        default: ''
+      legal_name:
+        description: 'SELLER_LEGAL_NAME — the name on the invoice'
+        required: true
+        default: 'Sadhna Pharma Distributors Pvt Ltd'
+      gstin:
+        description: 'SELLER_GSTIN — rejected before writing if the check digit fails'
+        required: true
+        default: '27AABCS9876P1ZA'
+      address:
+        description: 'SELLER_ADDRESS — the registered place of business'
+        required: true
+        default: 'Unit 4, MIDC Phase II, Bhiwandi 421302'
+      phone:
+        description: 'SELLER_PHONE — printed as given; comma-separate two numbers'
+        required: false
+        default: '+91 22 2856 4410, +91 98204 33127'
+      email:
+        description: 'SELLER_EMAIL'
+        required: false
+        default: 'accounts@sadhnapharma.co.in'
+
+concurrency:
+  # Never alongside a deploy: that one restarts the API mid-command.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    name: Write and verify the seller block
+    runs-on: [self-hosted, pharmacy-prod]
+    env:
+      LEGAL_NAME: ${{ inputs.legal_name }}
+      GSTIN: ${{ inputs.gstin }}
+      ADDRESS: ${{ inputs.address }}
+      PHONE: ${{ inputs.phone }}
+      EMAIL: ${{ inputs.email }}
+    steps:
+      # A dispatch is two clicks, and the second one is easy to make without
+      # reading the first. Typing the word is the point.
+      - name: Refuse unless confirmed
+        if: inputs.confirm != 'APPLY'
+        run: |
+          echo "::error::Type APPLY in the confirm box to run this."
+          exit 1
+
+      # Before the file is touched. A GSTIN that fails here would refuse at
+      # invoice time anyway — better to find out now, with the old value intact.
+      - name: Check the GSTIN against the application's own validator
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            exec -T -e CANDIDATE="$GSTIN" api python -c "
+          import os
+          from app.services.gst import gstin_check_digit, gstin_is_valid
+          code = os.environ['CANDIDATE'].strip().upper()
+          if gstin_is_valid(code):
+              print(f'{code} is valid.')
+              raise SystemExit(0)
+          expected = gstin_check_digit(code[:14]) if len(code) >= 14 else None
+          if expected:
+              print(f'{code} fails its checksum: character 15 should be {expected}, not {code[14:]}.')
+          else:
+              print(f'{code} is not the shape of a GSTIN.')
+          raise SystemExit(1)
+          "
+
+      - name: Back up the current ~/.env
+        run: |
+          cd ~
+          cp .env ".env.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+          ls -1 .env.bak.* | tail -3
+
+      # Written with python rather than sed: these values carry spaces, commas
+      # and an @, and quoting them through a shell substitution correctly is
+      # the sort of thing that works until the day somebody's address has an
+      # apostrophe in it. Each key is replaced in place if present, appended if
+      # not, so the rest of the file — including GEMINI_API_KEY — is untouched.
+      - name: Write the seller keys
+        run: |
+          cd ~
+          python3 - <<'PY'
+          import os
+          import pathlib
+
+          keys = {
+              "SELLER_LEGAL_NAME": os.environ["LEGAL_NAME"],
+              "SELLER_GSTIN": os.environ["GSTIN"].strip().upper(),
+              "SELLER_ADDRESS": os.environ["ADDRESS"],
+              "SELLER_PHONE": os.environ["PHONE"],
+              "SELLER_EMAIL": os.environ["EMAIL"],
+          }
+
+          # Every value is written inside double quotes, so a double quote in
+          # one would end it early and leave the file unparseable — which
+          # compose reports as a missing variable, three steps from the cause.
+          for name, value in keys.items():
+              if '"' in value:
+                  raise SystemExit(f'{name} contains a double quote. Refusing.')
+
+          path = pathlib.Path.home() / ".env"
+          lines = path.read_text().splitlines()
+          seen = set()
+
+          for i, line in enumerate(lines):
+              name = line.split("=", 1)[0].strip()
+              if name in keys:
+                  lines[i] = f'{name}="{keys[name]}"'
+                  seen.add(name)
+
+          for name, value in keys.items():
+              if name not in seen:
+                  lines.append(f'{name}="{value}"')
+
+          path.write_text("\n".join(lines) + "\n")
+
+          for name in keys:
+              print(f"{'updated' if name in seen else 'appended'}  {name}")
+          PY
+
+      # Compose reads ~/.env at container-create time, so the API has to be
+      # recreated rather than merely restarted for the new values to arrive.
+      - name: Recreate the API with the new environment
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            up -d --force-recreate api
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            exec -T api python -c "print('api is up')"
+
+      # The API reports its invoicing configuration on the first line of its
+      # startup. Reading that back is the difference between "the file was
+      # written" and "invoices will print", which are not the same claim.
+      #
+      # Note what this step does *not* prove: `can_issue_tax_invoice` asks
+      # whether the two settings are present, not whether the GSTIN survives
+      # its checksum. A wrong check digit still reports as enabled here and
+      # then refuses at invoice time. The validator step above is what covers
+      # that, which is why it runs before the file is touched.
+      - name: Read the boot report back
+        run: |
+          cd ~
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            logs api --since 5m | grep -i "tax invoicing" | tail -5 > /tmp/invoicing.txt
+          cat /tmp/invoicing.txt
+          if grep -qi "DISABLED" /tmp/invoicing.txt; then
+            echo "::error::The API still reports tax invoicing as disabled. The previous ~/.env is backed up beside it."
+            exit 1
+          fi
+          if ! grep -qi "enabled" /tmp/invoicing.txt; then
+            echo "::error::No invoicing report in the log — the API may not have finished starting."
+            exit 1
+          fi
