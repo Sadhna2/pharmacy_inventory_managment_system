@@ -34,7 +34,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { ChevronRight, Mic, RotateCcw, Send, ShieldAlert, Split } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  Copy,
+  MessagesSquare,
+  Mic,
+  RotateCcw,
+  Send,
+  ShieldAlert,
+  Split,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { cn, qty } from "@/lib/format";
 import { useVoice, type VoiceProblem } from "@/lib/useVoice";
@@ -102,19 +112,11 @@ interface Turn {
 const MAX_QUESTION_CHARS = 500;
 
 /**
- * The questions a beginner does not know they are allowed to ask.
- *
- * Real ones off this shop floor rather than "show me the data" — each names
- * something this schema actually holds, so a first click comes back with rows
- * instead of a clarifying question. Nobody reads documentation for a text box;
- * they copy the example nearest to what they wanted.
+ * How tall the box may grow before it scrolls inside itself: about eight
+ * lines. Past that the composer starts eating the answer above it, and a
+ * question that long is being pasted rather than written.
  */
-const STARTERS = [
-  "Which batches expire in the next 60 days, and what are they worth?",
-  "What is my stock worth at each branch?",
-  "What was written off last month, and why?",
-  "Which purchase orders are overdue?",
-];
+const MAX_COMPOSER_PX = 176;
 
 /**
  * The one turn a follow-up is allowed to know about.
@@ -133,14 +135,50 @@ function memoryOf(thread: Turn[]): PreviousTurn | undefined {
 
 /* ------------------------------------------------------------------- pieces */
 
+/**
+ * Copy, with the button reporting that it worked.
+ *
+ * The confirmation is the whole point. A copy button that looks identical
+ * before and after leaves the person pressing it twice and then pasting
+ * somewhere else to check, and the statement they are copying is the evidence
+ * for a number they are about to act on.
+ */
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1400);
+        });
+      }}
+      className={cn(
+        "flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors",
+        copied ? "text-ok-strong" : "text-ink-faint hover:bg-muted hover:text-ink",
+      )}
+    >
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 function SqlBlock({ label, sql }: { label?: string; sql: string }) {
   return (
-    <div className="min-w-0">
-      {label && (
-        <p className="mb-1 text-[11px] tracking-wide text-ink-faint uppercase">
-          {label}
-        </p>
-      )}
+    <div className="group/sql min-w-0">
+      <div className="mb-1 flex items-center gap-2">
+        {label && (
+          <p className="text-[11px] tracking-wide text-ink-faint uppercase">
+            {label}
+          </p>
+        )}
+        <span className="ml-auto opacity-0 transition-opacity group-hover/sql:opacity-100 focus-within:opacity-100">
+          <CopyButton text={sql} label="Copy this SQL" />
+        </span>
+      </div>
       {/* `.scroll-x` so a wide statement scrolls inside its own box and the
           page never does. */}
       <pre
@@ -232,14 +270,33 @@ function QueryDetails({ answer }: { answer: AskAnswer }) {
  * "assumed the Andheri branch" is the whole difference between right and
  * plausible.
  */
+/**
+ * The choices the question left open, behind a disclosure.
+ *
+ * Collapsed, not removed. Four assumptions printed under every answer is four
+ * lines of the same shape on every turn, and a block that always looks the
+ * same stops being read by the third one — so the turn it actually mattered on
+ * goes past unnoticed too. The count stays on the summary line, because "3
+ * assumptions" is the part that decides whether to open it.
+ */
 function Assumptions({ items }: { items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="rounded-lg border border-line bg-muted/40 px-3 py-2.5">
-      <p className="text-[11px] tracking-wide text-ink-faint uppercase">
+    <details className="group rounded-lg border border-line bg-muted/40">
+      <summary
+        className={cn(
+          "flex cursor-pointer items-center gap-2 px-3 py-1.5",
+          "text-[12px] text-ink-soft select-none",
+          "list-none [&::-webkit-details-marker]:hidden",
+        )}
+      >
+        <ChevronRight className="size-3.5 shrink-0 transition-transform group-open:rotate-90" />
         What it decided for you
-      </p>
-      <ul className="mt-1.5 space-y-1">
+        <span className="tnum ml-auto text-[12px] text-ink-faint">
+          {items.length}
+        </span>
+      </summary>
+      <ul className="space-y-1 border-t border-line px-3 py-2">
         {items.map((item) => (
           <li key={item} className="flex gap-2 text-[13px] text-ink-soft">
             <span className="mt-[7px] size-1 shrink-0 rounded-full bg-ink-faint" />
@@ -247,7 +304,7 @@ function Assumptions({ items }: { items: string[] }) {
           </li>
         ))}
       </ul>
-    </div>
+    </details>
   );
 }
 
@@ -260,7 +317,7 @@ function Assumptions({ items }: { items: string[] }) {
  * touched the database, and painting that as a failure teaches people to
  * distrust the times it stays quiet.
  */
-function TurnCard({ answer }: { answer: AskAnswer }) {
+function TurnCard({ answer, number }: { answer: AskAnswer; number: number }) {
   const label =
     answer.outcome === "refuse" ? (
       <Badge tone="neutral">Not run</Badge>
@@ -271,8 +328,25 @@ function TurnCard({ answer }: { answer: AskAnswer }) {
     ) : null;
 
   return (
-    <Card>
-      <CardHeader title={answer.question} actions={label} />
+    <Card className="rise">
+      {/* Numbered, because a session is a sequence and "the one before last"
+          is how people refer to an answer they want back. It also says at a
+          glance how far in you are, which the scroll position no longer does
+          now the table keeps its own. */}
+      <CardHeader
+        title={
+          // Wrapped, not truncated. The heading is the person's own sentence,
+          // and a long question ending in an ellipsis is the one thing on this
+          // card they cannot look up somewhere else.
+          <span className="flex min-w-0 items-start gap-2">
+            <span className="tnum mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-ink-faint">
+              {number}
+            </span>
+            <span className="min-w-0 break-words">{answer.question}</span>
+          </span>
+        }
+        actions={label}
+      />
       <div className="space-y-4 px-4 py-4 sm:px-5">
         {answer.outcome === "answer" && (
           <>
@@ -296,7 +370,12 @@ function TurnCard({ answer }: { answer: AskAnswer }) {
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-ink-soft" />
             <div className="min-w-0 space-y-1.5">
               <p className="text-[15px] leading-relaxed text-ink">{answer.refusal}</p>
-              {answer.explanation && (
+              {/* Two different refusals arrive here. One is a statement the
+                  guard stopped, and its explanation is worth showing because
+                  something was about to run. The other is "this database does
+                  not hold that figure" — nothing was written, so the line
+                  below would be describing a query that never existed. */}
+              {answer.explanation && answer.sql && (
                 <p className="text-[13px] leading-relaxed text-ink-soft">
                   What it had been about to run: {answer.explanation}
                 </p>
@@ -353,11 +432,36 @@ function hintTone(listening: boolean, problem: VoiceProblem | null): string {
 
 /* --------------------------------------------------------------------- page */
 
+/**
+ * The thread, held outside the component so leaving the screen does not end it.
+ *
+ * `useState` dies with the route, which meant walking to Stock to check
+ * something — the ordinary reason to leave this screen mid-conversation — threw
+ * the conversation away. That also made "Start over" a lie: a button that
+ * clears the thread implies the thread survives everything else.
+ *
+ * A module variable rather than `sessionStorage` on purpose. An answer carries
+ * up to 200 rows and a session holds many of them, which is a real chance of
+ * blowing the 5MB quota — and the failure mode there is a thrown exception on
+ * a screen that was working, in exchange for surviving a reload. Leaving the
+ * screen is the case that happens; reloading the page is not.
+ *
+ * Per tab, and gone when the tab is. Nothing here reaches another user.
+ */
+let retained: { thread: Turn[]; draft: string } = { thread: [], draft: "" };
+
 export function Ask() {
-  const [question, setQuestion] = useState("");
-  const [thread, setThread] = useState<Turn[]>([]);
+  const [question, setQuestion] = useState(retained.draft);
+  const [thread, setThread] = useState<Turn[]>(retained.thread);
   const box = useRef<HTMLTextAreaElement>(null);
   const foot = useRef<HTMLDivElement>(null);
+
+  // Written on every change rather than on unmount: an unmount handler misses
+  // a tab being closed, and reading a half-written thread back is worse than
+  // reading none.
+  useEffect(() => {
+    retained = { thread, draft: question };
+  }, [thread, question]);
 
   /**
    * What was already in the box when the microphone was switched on.
@@ -389,6 +493,21 @@ export function Ask() {
     if (thread.length > 0) foot.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread.length]);
 
+  useEffect(() => {
+    // The box is exactly as tall as its contents, to a ceiling.
+    //
+    // Driven by the value rather than by `onChange`, because the text changes
+    // by four routes and only one of them is a keystroke: dictation writes
+    // through `setQuestion`, a clarify puts the question back, sending empties
+    // it, and a retained draft arrives already written. Sizing in the change
+    // handler grew the box while typing and then left it three lines tall over
+    // an empty field after the question was sent.
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_COMPOSER_PX)}px`;
+  }, [question]);
+
   const send = () => {
     const asked = question.trim();
     if (!asked || ask.isPending) return;
@@ -396,12 +515,6 @@ export function Ask() {
     // is about to be emptied, and the next question would start half-written.
     voice.stop();
     ask.mutate({ question: asked, previous: memoryOf(thread) });
-  };
-
-  const fill = (starter: string) => {
-    setQuestion(starter);
-    typed.current = starter;
-    box.current?.focus();
   };
 
   const dictate = () => {
@@ -418,122 +531,71 @@ export function Ask() {
   };
 
   return (
-    <>
-      <PageHeader
-        title="Ask"
-        description="A question in plain English, answered from this database. The query it wrote is under every answer."
-        actions={
-          thread.length > 0 && (
-            <Button size="sm" onClick={startOver}>
-              <RotateCcw className="size-3.5" />
-              Start over
-            </Button>
-          )
-        }
-      />
-
-      <div className="space-y-4">
-        <Card className="p-4 sm:p-5">
-          <div className="flex items-start gap-2">
-            <Textarea
-              ref={box}
-              rows={3}
-              value={question}
-              maxLength={MAX_QUESTION_CHARS}
-              aria-label="Your question"
-              placeholder="Which batches expire before the end of next month?"
-              className="min-h-24 text-[15px] leading-relaxed"
-              onChange={(e) => {
-                setQuestion(e.target.value);
-                // The next dictation starts from what is in the box now. Not
-                // while one is running, though: the base has to stay fixed for
-                // the length of an utterance, or each revised interim result
-                // gets appended to the one before it.
-                if (!voice.listening) typed.current = e.target.value.trim();
-              }}
-              onKeyDown={(e) => {
-                // Enter asks. `isComposing` keeps a transliteration keyboard
-                // from submitting the moment it commits a syllable.
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-            />
-            {/* No microphone at all where the browser has no speech
-                recognition — a button that does nothing when pressed is worse
-                than no button, because people keep pressing it. */}
-            {voice.supported && (
-              <Button
-                variant={voice.listening ? "primary" : "secondary"}
-                aria-pressed={voice.listening}
-                aria-label={
-                  voice.listening ? "Stop dictating" : "Dictate the question"
-                }
-                className="shrink-0 px-3"
-                onClick={() => (voice.listening ? voice.stop() : dictate())}
-              >
-                <Mic className={cn("size-4", voice.listening && "animate-pulse")} />
+    /*
+     * The page owns its height and does not scroll; the thread inside it does.
+     *
+     * It was a normal scrolling page with the composer stuck to the bottom,
+     * which put the box under the header on an empty screen and moved it down
+     * as answers arrived — the one element that must not move was the only one
+     * that did. A column of a known height cannot do that: header and composer
+     * are fixed rows, the thread is the only thing that grows, and the box is
+     * at the bottom from the first paint.
+     */
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0">
+        <PageHeader
+          title="Ask"
+          description="A question in plain English, answered from this database. The query it wrote is under every answer."
+          actions={
+            thread.length > 0 && (
+              <Button size="sm" onClick={startOver}>
+                <RotateCcw className="size-3.5" />
+                Start over
               </Button>
-            )}
-          </div>
+            )
+          }
+        />
+      </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <p className={cn("text-[12px]", hintTone(voice.listening, voice.problem))}>
-              {hint(voice.listening, voice.problem)}
+      {/* The only scrolling region on the screen. `pr-1` keeps its scrollbar
+          off the cards rather than over them. */}
+      <div className="scroll-y min-h-0 flex-1 space-y-4 pr-1">
+        {/* Nothing asked yet. One line and an outline mark, centred in the
+            space the thread will fill — the four example questions that used
+            to live here were most of a screen given to something a person
+            reads once and never again. */}
+        {thread.length === 0 && !ask.isPending && !ask.error && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <MessagesSquare className="size-8 text-ink-faint/50" strokeWidth={1.25} />
+            <p className="max-w-sm text-[13px] leading-relaxed text-ink-faint">
+              Ask about stock, batches, orders or suppliers. Every answer comes
+              with the query that produced it.
             </p>
-            <div className="ml-auto flex items-center gap-3">
-              {/* Only near the ceiling. A counter on every question implies a
-                  budget nobody has to think about at forty words. */}
-              {question.length > MAX_QUESTION_CHARS - 100 && (
-                <span className="tnum text-[12px] text-ink-faint">
-                  {question.length}/{MAX_QUESTION_CHARS}
-                </span>
-              )}
-              <Button
-                variant="primary"
-                loading={ask.isPending}
-                disabled={question.trim().length === 0}
-                onClick={send}
-              >
-                <Send className="size-4" />
-                Ask
-              </Button>
-            </div>
           </div>
-
-          {thread.length === 0 && !ask.isPending && (
-            <div className="mt-4 border-t border-line pt-4">
-              <p className="text-[11px] tracking-wide text-ink-faint uppercase">
-                Things people ask
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {STARTERS.map((starter) => (
-                  <Button
-                    key={starter}
-                    size="sm"
-                    className="h-auto max-w-full py-1.5 text-left whitespace-normal"
-                    onClick={() => fill(starter)}
-                  >
-                    {starter}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
+        )}
 
         {/* Transport failures only. A refusal and a question back arrive as
             successful responses, and neither is drawn like this. */}
         {ask.error && <ErrorState error={ask.error} />}
 
-        {thread.map((turn) => (
-          <TurnCard key={turn.id} answer={turn.answer} />
+        {thread.map((turn, index) => (
+          <TurnCard key={turn.id} answer={turn.answer} number={index + 1} />
         ))}
 
         {ask.isPending && (
-          <Card>
-            <CardHeader title={ask.variables?.question ?? ""} />
+          <Card className="rise">
+            <CardHeader
+              title={
+                <span className="flex min-w-0 items-start gap-2">
+                  <span className="tnum mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-ink-faint">
+                    {thread.length + 1}
+                  </span>
+                  <span className="min-w-0 break-words">
+                    {ask.variables?.question ?? ""}
+                  </span>
+                </span>
+              }
+            />
             <div className="flex items-center gap-3 px-4 py-5 sm:px-5">
               <Spinner />
               <p className="text-[13px] text-ink-soft">
@@ -546,6 +608,91 @@ export function Ask() {
 
         <div ref={foot} />
       </div>
-    </>
+
+      {/*
+        One row: the box, the microphone, the button. It was a three-row
+        textarea in a padded card with four example questions under it, which
+        is most of a laptop screen given to a control that holds one sentence.
+        The box now starts at one line and grows to about six as it is typed
+        into, so it is the size of what is in it.
+      */}
+      <div className="shrink-0 pt-3">
+        {/* The ring is on the strip, not the textarea inside it, so the whole
+            control lights up as one object — a glowing box inside a still box
+            looks like two controls, one of which is broken. */}
+        <div
+          className={cn(
+            "flex items-end gap-2 rounded-xl border border-line bg-surface p-2",
+            "shadow-sm transition-shadow",
+            "focus-within:border-brand/60 focus-within:ring-2 focus-within:ring-brand-ring",
+          )}
+        >
+          <Textarea
+            ref={box}
+            rows={1}
+            value={question}
+            maxLength={MAX_QUESTION_CHARS}
+            aria-label="Your question"
+            placeholder="Ask about stock, batches, orders or suppliers…"
+            className="min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-2 py-1.5 text-[14px] leading-relaxed shadow-none focus:ring-0"
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              // The next dictation starts from what is in the box now. Not
+              // while one is running, though: the base has to stay fixed for
+              // the length of an utterance, or each revised interim result
+              // gets appended to the one before it.
+              if (!voice.listening) typed.current = e.target.value.trim();
+            }}
+            onKeyDown={(e) => {
+              // Enter asks. `isComposing` keeps a transliteration keyboard
+              // from submitting the moment it commits a syllable.
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+
+          {/* No microphone at all where the browser has no speech recognition
+              — a button that does nothing when pressed is worse than no
+              button, because people keep pressing it. */}
+          {voice.supported && (
+            <Button
+              variant={voice.listening ? "primary" : "secondary"}
+              aria-pressed={voice.listening}
+              aria-label={voice.listening ? "Stop dictating" : "Dictate the question"}
+              className="size-9 shrink-0 p-0"
+              onClick={() => (voice.listening ? voice.stop() : dictate())}
+            >
+              <Mic className={cn("size-4", voice.listening && "animate-pulse")} />
+            </Button>
+          )}
+
+          <Button
+            variant="primary"
+            loading={ask.isPending}
+            disabled={question.trim().length === 0}
+            aria-label="Ask"
+            className="size-9 shrink-0 p-0"
+            onClick={send}
+          >
+            <Send className="size-4" />
+          </Button>
+        </div>
+
+        {/* One line, and only when it has something to say. The keyboard hint
+            is not worth a permanent row under the box. */}
+        {(voice.listening || voice.problem) && (
+          <p className={cn("mt-1.5 px-1 text-[12px]", hintTone(voice.listening, voice.problem))}>
+            {hint(voice.listening, voice.problem)}
+          </p>
+        )}
+        {question.length > MAX_QUESTION_CHARS - 100 && (
+          <p className="tnum mt-1.5 px-1 text-right text-[12px] text-ink-faint">
+            {question.length}/{MAX_QUESTION_CHARS}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }

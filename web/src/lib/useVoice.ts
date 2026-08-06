@@ -181,6 +181,22 @@ export function useVoice(onHeard: (text: string) => void): Voice {
   const [problem, setProblem] = useState<VoiceProblem | null>(null);
   const session = useRef<Recogniser | null>(null);
 
+  /**
+   * Whether the person still wants the microphone on.
+   *
+   * The browser ends a session by itself — Chrome after a few seconds of
+   * silence, whatever `continuous` says — and the first version of this hook
+   * treated that as the person having finished. It is not: they were thinking
+   * about the second half of the sentence. Only pressing the button again, or
+   * sending the question, means finished. Everything else is a session to
+   * restart underneath them.
+   */
+  const wanted = useRef(false);
+
+  /** Words from sessions that have already ended, and the one running now. */
+  const committed = useRef("");
+  const current = useRef("");
+
   // Read through a ref so an unrelated re-render of the page cannot tear down
   // a recogniser in the middle of a sentence.
   const heard = useRef(onHeard);
@@ -188,9 +204,17 @@ export function useVoice(onHeard: (text: string) => void): Voice {
     heard.current = onHeard;
   });
 
-  const start = useCallback(() => {
-    // Already listening. Starting a second recogniser throws in Chrome and
-    // silently doubles every word in Safari.
+  const dictation = () => `${committed.current} ${current.current}`.trim();
+
+  /**
+   * Open one recogniser session. Called again by `onend` for as long as the
+   * person has not pressed stop, so a pause between two halves of a sentence
+   * does not end the dictation.
+   */
+  const launch = useRef<() => void>(() => {});
+  launch.current = () => {
+    // Starting a second recogniser throws in Chrome and silently doubles every
+    // word in Safari.
     if (!RECOGNISER || session.current) return;
 
     const recogniser = new RECOGNISER();
@@ -198,10 +222,11 @@ export function useVoice(onHeard: (text: string) => void): Voice {
     // The words have to appear while they are being said. Without this the box
     // stays empty for four seconds and the person says it again, louder.
     recogniser.interimResults = true;
-    // Stops at the end of an utterance rather than staying open. A microphone
-    // that keeps listening after the question has been asked collects the next
-    // conversation in the shop, and one question is one utterance.
-    recogniser.continuous = false;
+    // Stay open across a pause. The shop-noise worry that argued for `false`
+    // is answered by stopping on send and on leaving the screen instead — a
+    // microphone that dies mid-question is the louder problem, and the person
+    // cannot even tell that it did until they look at the box.
+    recogniser.continuous = true;
     recogniser.maxAlternatives = 1;
 
     recogniser.onresult = (event) => {
@@ -209,20 +234,37 @@ export function useVoice(onHeard: (text: string) => void): Voice {
       for (let i = 0; i < event.results.length; i += 1) {
         sentence += event.results[i][0].transcript;
       }
-      heard.current(sentence.trim());
+      current.current = sentence.trim();
+      heard.current(dictation());
     };
 
     recogniser.onerror = (event) => {
       // `aborted` is this hook stopping it, and `no-speech` is somebody who
-      // pressed the button and then thought about the question. Telling them
-      // about either is noise.
+      // pressed the button and then thought about the question. Neither is
+      // worth a sentence, and neither should end the dictation.
       if (event.error === "aborted" || event.error === "no-speech") return;
+      // Anything else is real. Stop trying — restarting into a denied
+      // microphone is an infinite loop with a permission prompt in it.
+      wanted.current = false;
       setProblem(PROBLEMS[event.error] ?? FAILED);
     };
 
     recogniser.onend = () => {
       session.current = null;
-      setListening(false);
+      // Carry this session's words forward: the next one starts with an empty
+      // `results`, so without this the box loses everything said so far.
+      committed.current = dictation();
+      current.current = "";
+
+      if (!wanted.current) {
+        setListening(false);
+        return;
+      }
+      // Out of this callback before starting again — Chrome throws if a new
+      // session begins inside the old one's `onend`.
+      setTimeout(() => {
+        if (wanted.current) launch.current();
+      }, 0);
     };
 
     try {
@@ -230,19 +272,32 @@ export function useVoice(onHeard: (text: string) => void): Voice {
     } catch {
       // Safari throws here instead of firing `onerror` — a previous session
       // still winding down, or a gesture it did not accept as one.
+      wanted.current = false;
       setProblem(FAILED);
+      setListening(false);
       return;
     }
 
     session.current = recogniser;
-    setProblem(null);
     setListening(true);
+  };
+
+  const start = useCallback(() => {
+    if (!RECOGNISER || session.current) return;
+    wanted.current = true;
+    committed.current = "";
+    current.current = "";
+    setProblem(null);
+    launch.current();
   }, []);
 
   const stop = useCallback(() => {
+    // Clear `wanted` first, so the `onend` this triggers does not restart it.
+    wanted.current = false;
     // `stop`, never `abort`: it delivers the last interim result as a final
     // one, so the last few words are not thrown away by pressing stop.
     session.current?.stop();
+    setListening(false);
   }, []);
 
   useEffect(
@@ -250,6 +305,11 @@ export function useVoice(onHeard: (text: string) => void): Voice {
       // Leaving the screen switches the microphone off. A recogniser left
       // running is a live microphone on a page nobody is looking at, and its
       // callbacks would be writing into a box that no longer exists.
+      //
+      // `wanted` first: the sessions now restart themselves, so unsetting the
+      // handlers is not enough — a pending `setTimeout` from the last `onend`
+      // would open a fresh one on a page that has gone.
+      wanted.current = false;
       const running = session.current;
       session.current = null;
       if (!running) return;

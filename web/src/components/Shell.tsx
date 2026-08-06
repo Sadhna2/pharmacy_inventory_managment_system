@@ -568,8 +568,22 @@ export function Shell() {
         </header>
 
         {/* The one scrolling element on the page. */}
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[88rem]">
+        {/*
+          A flex column, and the centring wrapper stretches inside it.
+
+          Every page here flows from the top and stops, so the wrapper's height
+          never mattered — until Ask, which is a chat window: its composer has
+          to sit on the bottom edge whether there is one answer or forty. That
+          needs `h-full` to resolve, and a percentage height resolves against
+          the parent's *height*, which an auto-height wrapper does not have. So
+          the wrapper became a stretched flex item.
+
+          `flex-1` with the default `min-height: auto` still grows past the
+          viewport when a page is taller, so nothing that flows normally
+          changes — only pages that ask for the full height now get it.
+        */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-[88rem] flex-1 flex-col">
             <Outlet />
           </div>
         </main>

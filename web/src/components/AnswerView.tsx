@@ -38,8 +38,8 @@ import {
 } from "recharts";
 import { SearchX } from "lucide-react";
 import { cn, moneyShort } from "@/lib/format";
-import { DataTable, type Column } from "./DataTable";
 import { Card, EmptyState, TableSkeleton } from "./ui";
+import { ResultTable } from "./ResultTable";
 import {
   cellKind,
   formatCell,
@@ -503,81 +503,29 @@ function LineAnswer({
   );
 }
 
-interface ResultRow {
-  index: number;
-  cells: unknown[];
-}
-
-type CardSlot = Column<ResultRow>["card"];
-
 /**
- * Which columns survive on a phone, and where each one lands on the card.
+ * `ResultTable` rather than `DataTable`, and only here.
  *
- * `DataTable` hides any column with no slot, so this is the decision about
- * what a nine-column answer looks like at 375px: the first thing with a name
- * leads, up to two more sit under it, and the numbers stack down the right.
+ * Every other table in the product shows a shape somebody chose in advance, so
+ * its widths were settled once against real values. An answer's shape is
+ * whatever the model selected — two columns or eleven, a branch name beside a
+ * rupee total, a four-hundred-character composition next to a date. Nobody can
+ * pick those widths before the query exists, so the reader gets to.
  */
-function cardSlots(kinds: CellKind[]): CardSlot[] {
-  let named = 0;
-  let numbers = 0;
-
-  const slots = kinds.map<CardSlot>((kind) => {
-    if (isNumericKind(kind)) {
-      numbers += 1;
-      // Three figures down the right of a card is already dense; the fourth
-      // turns a row into a paragraph.
-      return numbers <= 3 ? "meta" : undefined;
-    }
-    named += 1;
-    if (named === 1) return "primary";
-    return named <= 3 ? "secondary" : undefined;
-  });
-
-  // An answer that is all numbers still needs something to lead its card.
-  if (slots.length > 0 && !slots.includes("primary")) slots[0] = "primary";
-  return slots;
-}
-
 function TableAnswer({
   labels,
   kinds,
   rows,
+  downloadName,
 }: {
   labels: string[];
   kinds: CellKind[];
   rows: unknown[][];
+  downloadName?: string;
 }) {
-  const slots = cardSlots(kinds);
-
-  const columns: Column<ResultRow>[] = labels.map((label, index) => ({
-    // Position, not name: a join can return `name` twice and React needs the
-    // two of them to be different columns.
-    key: String(index),
-    header: label,
-    numeric: isNumericKind(kinds[index]),
-    card: slots[index],
-    render: (row) => {
-      const text = formatCell(row.cells[index], kinds[index]);
-      return isNumericKind(kinds[index]) ? (
-        <span>{text}</span>
-      ) : (
-        // Composition strings and supplier addresses run to hundreds of
-        // characters. Clamping the column keeps the table readable; the title
-        // keeps the rest reachable.
-        <span className="block max-w-[20rem] truncate" title={text}>
-          {text}
-        </span>
-      );
-    },
-  }));
-
   return (
-    <Card>
-      <DataTable
-        columns={columns}
-        rows={rows.map((cells, index) => ({ index, cells }))}
-        rowKey={(row) => row.index}
-      />
+    <Card className="p-3 sm:p-4">
+      <ResultTable labels={labels} kinds={kinds} rows={rows} downloadName={downloadName} />
     </Card>
   );
 }
