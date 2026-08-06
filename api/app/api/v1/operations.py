@@ -1,8 +1,11 @@
 """Layer 1 endpoints: purchasing, sales, transfers, adjustments, recalls."""
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -17,12 +20,14 @@ from app.core.errors import (
     ConflictError,
     NotFoundError,
     PermissionDenied,
+    ValidationError,
 )
 from app.db.session import get_db
 from app.models.documents import (
     DocumentStatus,
     GoodsReceipt,
     PurchaseOrder,
+    PurchaseOrderInvoice,
     Recall,
     SalesOrder,
     SalesOrderLine,
@@ -112,12 +117,36 @@ def actor_names(db: Session, *ids: int | None) -> dict[int, str]:
 po_router = APIRouter(prefix="/purchase-orders", tags=["purchasing"])
 
 
+def _orders_with_an_invoice(db: Session, po_ids: Sequence[int]) -> set[int]:
+    """Which of these orders have the distributor's invoice stored.
+
+    Ids only. The `content` column is the whole point of keeping the file in a
+    table of its own, and selecting the row rather than the key would undo
+    that on every list request.
+    """
+    if not po_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(PurchaseOrderInvoice.purchase_order_id).where(
+                PurchaseOrderInvoice.purchase_order_id.in_(po_ids)
+            )
+        )
+    )
+
+
 def _po_out(
-    db: Session, po: PurchaseOrder, names: dict[int, str] | None = None
+    db: Session,
+    po: PurchaseOrder,
+    names: dict[int, str] | None = None,
+    with_invoice: set[int] | None = None,
 ) -> PurchaseOrderOut:
     if names is None:
         names = actor_names(db, po.created_by, po.approved_by)
+    if with_invoice is None:
+        with_invoice = _orders_with_an_invoice(db, [po.id])
     out = PurchaseOrderOut.model_validate(po)
+    out.has_invoice = po.id in with_invoice
     out.supplier_name = po.supplier.name if po.supplier else None
     out.warehouse_name = po.warehouse.name if po.warehouse else None
     out.created_by_name = names.get(po.created_by)
@@ -159,7 +188,10 @@ def list_purchase_orders(
     names = actor_names(
         db, *(po.created_by for po in rows), *(po.approved_by for po in rows)
     )
-    return paginate([_po_out(db, po, names) for po in rows], total, params)
+    stored = _orders_with_an_invoice(db, [po.id for po in rows])
+    return paginate(
+        [_po_out(db, po, names, stored) for po in rows], total, params
+    )
 
 
 @po_router.post("", response_model=PurchaseOrderOut, status_code=201)
@@ -237,6 +269,112 @@ def cancel_po(
     po = procurement.cancel_purchase_order(db, po_id)
     db.refresh(po)
     return _po_out(db, po)
+
+
+#: The kinds of file a distributor's invoice actually arrives as. Enforced
+#: rather than trusted, because the download hands this string straight back
+#: as the response's Content-Type — an unchecked one is how a stored file gets
+#: served as `text/html` and runs in the browser of whoever opens it.
+INVOICE_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
+
+#: Same ceiling the scanner already applies to the same file.
+MAX_INVOICE_BYTES = 10 * 1024 * 1024
+
+
+@po_router.put("/{po_id}/invoice", response_model=Message)
+async def store_po_invoice(
+    po_id: int,
+    file: UploadFile = File(..., description="The distributor's invoice"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("po.create")),
+) -> Message:
+    """Keep the invoice the order was raised from.
+
+    PUT rather than POST because there is one per order: uploading again
+    replaces it. A second scan of the same delivery is a correction, and two
+    files against one order would leave whoever opens it later choosing
+    between them with nothing to choose on.
+    """
+    po = db.get(PurchaseOrder, po_id)
+    if po is None or not in_scope(user, po.warehouse_id):
+        raise NotFoundError(f"Purchase order {po_id} not found")
+
+    content = await file.read()
+    if not content:
+        raise ValidationError("That file is empty")
+    if len(content) > MAX_INVOICE_BYTES:
+        raise ValidationError(
+            f"The file is {len(content) / 1e6:.1f} MB; the limit is "
+            f"{MAX_INVOICE_BYTES / 1e6:.0f} MB"
+        )
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in INVOICE_TYPES:
+        raise ValidationError(
+            f"{content_type or 'that file type'} is not an invoice — "
+            "a PDF or a photograph"
+        )
+
+    stored = db.scalar(
+        select(PurchaseOrderInvoice).where(
+            PurchaseOrderInvoice.purchase_order_id == po_id
+        )
+    )
+    if stored is None:
+        stored = PurchaseOrderInvoice(purchase_order_id=po_id)
+        db.add(stored)
+    stored.filename = Path(file.filename or "invoice").name
+    stored.content_type = content_type
+    stored.size_bytes = len(content)
+    stored.content = content
+    stored.uploaded_by = user.id
+    stored.uploaded_at = datetime.now(UTC)
+
+    audit.record(db, action="po.invoice.store", entity_type="purchase_order",
+                 entity_id=po_id, actor_user_id=user.id,
+                 after={"filename": stored.filename, "bytes": stored.size_bytes})
+    return Message(message=f"Invoice stored against {po.po_number}")
+
+
+@po_router.get("/{po_id}/invoice")
+def download_po_invoice(
+    po_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("po.view")),
+) -> Response:
+    """Hand back the file exactly as it was uploaded."""
+    po = db.get(PurchaseOrder, po_id)
+    if po is None or not in_scope(user, po.warehouse_id):
+        raise NotFoundError(f"Purchase order {po_id} not found")
+    stored = db.scalar(
+        select(PurchaseOrderInvoice).where(
+            PurchaseOrderInvoice.purchase_order_id == po_id
+        )
+    )
+    if stored is None:
+        raise NotFoundError(f"No invoice stored against {po.po_number}")
+
+    # Named for the order rather than for whatever the file was called on the
+    # uploader's phone, keeping the original extension so it still opens. A
+    # folder of downloads called IMG_4471.jpg is a folder nobody can search.
+    suffix = Path(stored.filename).suffix or ""
+    return Response(
+        content=stored.content,
+        media_type=stored.content_type,
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{po.po_number}-invoice{suffix}"',
+            # It never changes once stored, and the browser asking again on
+            # every click of a 4 MB photograph is pure waste.
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
 
 
 # ============================================================ goods receipts

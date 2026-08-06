@@ -131,6 +131,18 @@ USED_BY: dict[str, tuple[str, str]] = {
         "One order with its lines, used to prefill a goods receipt with what "
         "the delivery is expected to contain.",
     ),
+    "PUT /api/v1/purchase-orders/{po_id}/invoice": (
+        "Operations → Purchasing → New order",
+        "Keeps the distributor's invoice against the order it raised. One per "
+        "order — uploading again replaces it, because a second scan of the "
+        "same delivery is a correction rather than a second document.",
+    ),
+    "GET /api/v1/purchase-orders/{po_id}/invoice": (
+        "Operations → Purchasing → Receive goods",
+        "Hands back the stored invoice as it was uploaded, named for the "
+        "order. Offered on the receiving screen when the order carries one, "
+        "so the cartons can be checked against the paper they came with.",
+    ),
     "POST /api/v1/purchase-orders/{po_id}/submit": (
         "Operations → Purchasing → Submit",
         "Moves a DRAFT to PENDING_APPROVAL.",

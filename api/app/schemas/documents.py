@@ -100,6 +100,12 @@ class PurchaseOrderOut(DocumentTotalsOut):
     warehouse_name: str | None = None
     status: DocumentStatus
     order_date: date
+    #: `order_date` is the business date the order bears and is a date by
+    #: design — it can be back-dated, and two orders raised minutes apart carry
+    #: the same one. This is when the row was actually written, which is what
+    #: someone means by "when did this happen" and the only thing that
+    #: distinguishes a run of same-day documents.
+    created_at: datetime
     expected_date: date | None = None
     notes: str | None = None
     created_by: int
@@ -110,6 +116,11 @@ class PurchaseOrderOut(DocumentTotalsOut):
     approved_by: int | None = None
     approved_by_name: str | None = None
     approved_at: datetime | None = None
+    #: Whether the distributor's own invoice is stored against this order.
+    #: A flag rather than the file: the receiving screen needs to know whether
+    #: to offer the download, and answering that by shipping a few megabytes
+    #: of photograph with every row of a list would be absurd.
+    has_invoice: bool = False
     lines: list[POLineOut] = []
 
 
@@ -355,6 +366,8 @@ class SalesOrderOut(DocumentTotalsOut):
     warehouse_name: str | None = None
     status: DocumentStatus
     order_date: date
+    #: See PurchaseOrderOut — the business date is a date, this is the clock.
+    created_at: datetime
     notes: str | None = None
     lines: list[SOLineOut] = []
 
@@ -398,16 +411,36 @@ class TransferLineIn(BaseModel):
     lot_id: int | None = None
 
 
+class TransferBatchOut(BaseModel):
+    """A batch that actually left, and how much of it."""
+
+    lot_id: int | None = None
+    lot_code: str | None = None
+    expiry_date: date | None = None
+    quantity: Decimal
+
+
 class TransferLineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     product_id: int
     sku: str | None = None
     product_name: str | None = None
+    #: The batch this line *asked* for, and usually nothing — pinning one is
+    #: the exception. See `batches` for what was actually sent.
     lot_id: int | None = None
     lot_code: str | None = None
     quantity: Decimal
     qty_received: Decimal
+    #: What left the shelf, read back from the ledger.
+    #:
+    #: A line normally names no batch: FEFO decides at dispatch, and it can
+    #: split one line across two lots when the oldest does not cover it. So
+    #: until the goods move there is no batch to show, and afterwards the only
+    #: record of which ones went is the dispatch movements. Empty for a
+    #: transfer that has not been dispatched, which is the honest answer rather
+    #: than a guess at what FEFO would pick.
+    batches: list[TransferBatchOut] = []
 
 
 class TransferIn(BaseModel):
@@ -445,6 +478,10 @@ class TransferOut(BaseModel):
     created_by_name: str | None = None
     approved_by: int | None = None
     approved_by_name: str | None = None
+    #: When it was raised. The list comes back newest first, and with only a
+    #: transfer number on screen there was no way to see that — the numbers
+    #: ascend with the id, so the order was right and looked arbitrary.
+    created_at: datetime
     dispatched_at: datetime | None = None
     received_at: datetime | None = None
     notes: str | None = None
@@ -501,6 +538,10 @@ class AdjustmentOut(BaseModel):
     warehouse_id: int
     reason_code: str
     status: DocumentStatus
+    #: An adjustment carried no date at all — the screen listed a stock
+    #: correction with no way to say when it was made, which is the first
+    #: thing anyone auditing one asks.
+    created_at: datetime
     created_by: int
     created_by_name: str | None = None
     approved_by: int | None = None

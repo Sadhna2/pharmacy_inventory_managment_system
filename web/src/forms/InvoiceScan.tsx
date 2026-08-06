@@ -32,6 +32,7 @@ import { useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  Download,
   Info,
   OctagonAlert,
   ScanLine,
@@ -109,6 +110,107 @@ async function upload(
   return response.json();
 }
 
+/**
+ * Keep the file against the order it raised.
+ *
+ * Separate from reading it, and after the order exists, because the order is
+ * what it hangs on — there is nothing to attach a photograph to until the
+ * document has an id. Two requests rather than one multipart create, which
+ * also means a failure here loses the picture and not the order.
+ */
+export async function storeInvoiceAgainstOrder(
+  poId: number,
+  file: File,
+): Promise<void> {
+  const body = new FormData();
+  body.append("file", file);
+  const token = getAccessToken();
+  const response = await fetch(`/api/v1/purchase-orders/${poId}/invoice`, {
+    method: "PUT",
+    body,
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    throw new ApiError(response.status, {
+      type: "about:blank",
+      title: "Upload failed",
+      status: response.status,
+      detail: "The invoice could not be stored.",
+      ...problem,
+    });
+  }
+}
+
+/**
+ * Download the stored invoice for an order.
+ *
+ * Fetched rather than linked, for the reason `api.getText` documents: a plain
+ * `<a href>` is a top-level navigation, it carries no Authorization header,
+ * and the browser would render a 401 where the invoice should be. So the
+ * bytes come back through the ordinary authenticated path and are handed to
+ * the browser as a blob.
+ */
+export function InvoiceDownload({
+  poId,
+  number,
+}: {
+  poId: number;
+  number: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchIt = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = getAccessToken();
+      const response = await fetch(`/api/v1/purchase-orders/${poId}/invoice`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+
+      // Read out of the header the server set, so the file lands named after
+      // the order rather than as "invoice" or a uuid.
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = named ?? `${number}-invoice`;
+      link.click();
+      // Freed on the next tick rather than immediately: revoking synchronously
+      // races the click the browser has not finished acting on, and the
+      // download arrives empty.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError("The invoice could not be downloaded.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={() => void fetchIt()}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline disabled:opacity-60"
+      >
+        <Download className="size-3.5" />
+        {busy ? "Fetching…" : `Invoice for ${number}`}
+      </button>
+      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
 /** One product, as this distributor prints it. */
 export interface Alias {
   product_id: number;
@@ -170,8 +272,13 @@ export function InvoiceScanButton({
    */
   supplierId?: string;
   disabled?: boolean;
-  /** Handed the proposal. The form decides what to do with it. */
-  onScanned: (result: InvoiceIntake) => void;
+  /**
+   * Handed the proposal, and the file it was read from. The form decides what
+   * to do with both — the purchase order form keeps the file so it can be
+   * stored against the order the scan is about to raise, which is the only
+   * copy of a document the order's own quantities came off.
+   */
+  onScanned: (result: InvoiceIntake, file: File) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -182,7 +289,7 @@ export function InvoiceScanButton({
     setBusy(true);
     setError(null);
     try {
-      onScanned(await upload(file, { warehouseId, poId, supplierId }));
+      onScanned(await upload(file, { warehouseId, poId, supplierId }), file);
     } catch (err) {
       setError(
         err instanceof ApiError

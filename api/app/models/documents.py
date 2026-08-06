@@ -16,6 +16,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -130,6 +131,45 @@ class PurchaseOrderLine(Base, TaxLineMixin):
 
     purchase_order: Mapped[PurchaseOrder] = relationship(back_populates="lines")
     product: Mapped["Product"] = relationship()  # noqa: F821
+
+
+class PurchaseOrderInvoice(Base):
+    """The distributor's own invoice, kept as it arrived.
+
+    A separate table rather than a column on the order, because a `bytea` on
+    `purchase_orders` is loaded by every query that touches an order — the list
+    screen would drag a few megabytes of photographs across the wire to render
+    a page of numbers. Here it is only read when someone asks for the file.
+
+    In the database rather than on disk or in a bucket because the alternative
+    is a second thing to back up, restore and keep in step with the row that
+    points at it — and a scanned invoice for a hundred-line order is a couple
+    of megabytes at most. If a chain ever scans enough of them for that to
+    stop being true, `content` is the only column that moves.
+
+    One per order, replaced rather than versioned: a second scan of the same
+    delivery is a correction, not a second document.
+    """
+
+    __tablename__ = "purchase_order_invoices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    purchase_order_id: Mapped[int] = mapped_column(
+        ForeignKey("purchase_orders.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    #: What it was called on the machine it was uploaded from. Only ever used
+    #: to name the download, so the file that comes back out is recognisable
+    #: as the one that went in.
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class GoodsReceipt(Base, TimestampMixin):
