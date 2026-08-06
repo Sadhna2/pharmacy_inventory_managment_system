@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { api, ApiError, qs } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { cn, date, money, num, qty } from "@/lib/format";
+import { clock, cn, date, money, num, qty } from "@/lib/format";
 import type {
   Adjustment,
   Allocation,
@@ -46,11 +46,33 @@ function useAction(invalidate: string[]) {
       setError(null);
       invalidate.forEach((key) => qc.invalidateQueries({ queryKey: [key] }));
     },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.problem.detail : "Action failed"),
+    onError: (err) => setError(problem(err)),
   });
 
-  return { ...mutation, error, clearError: () => setError(null) };
+  return {
+    ...mutation,
+    error,
+    clearError: () => setError(null),
+    /**
+     * Show a failure that happened outside `mutate`.
+     *
+     * Some actions return a body the page has to keep — allocation hands back
+     * the batches it picked — so they call the API directly rather than
+     * through the mutation, and then have nowhere to put a refusal. Without
+     * this the only way to reach the banner was to re-send the request purely
+     * to make it fail again, which is not a thing to do to an endpoint that
+     * reserves stock.
+     */
+    report: (err: unknown) => setError(problem(err)),
+    /** Refresh the same lists a successful `mutate` would. */
+    settled: () =>
+      invalidate.forEach((key) => qc.invalidateQueries({ queryKey: [key] })),
+  };
+}
+
+/** The server's own words if it gave any, a fallback if it did not. */
+function problem(err: unknown): string {
+  return err instanceof ApiError ? err.problem.detail : "Action failed";
 }
 
 function ErrorBanner({ message }: { message: string | null }) {
@@ -115,6 +137,54 @@ function raisedByColumn<T extends {
         approvedBy={row.approved_by_name}
       />
     ),
+  };
+}
+
+/**
+ * A date with the clock time under it.
+ *
+ * Two lines rather than one string. Every operations list is ordered newest
+ * first, and on a busy day that is a run of rows all reading "05 Aug 2026" —
+ * the order was right and looked arbitrary, and there was no way to tell which
+ * of two orders came first. Stacked, the date stays the thing you scan and the
+ * time is there when you need it, without widening the column.
+ *
+ * `business` is the date the document bears — an order date can be back-dated
+ * and is what the document is *about*. `stamp` is when the row was written.
+ * When they differ the business date leads, because that is the one printed on
+ * the paperwork.
+ */
+function Stamp({
+  business,
+  stamp,
+}: {
+  business?: string | null;
+  stamp?: string | null;
+}) {
+  return (
+    <div className="leading-tight whitespace-nowrap">
+      <p className="text-[13px] text-ink-soft">{date(business ?? stamp)}</p>
+      {stamp && <p className="text-[11px] text-ink-faint tnum">{clock(stamp)}</p>}
+    </div>
+  );
+}
+
+/** The date column shared by every operations list. */
+function stampColumn<T>(
+  header: string,
+  pick: (row: T) => { business?: string | null; stamp?: string | null },
+): Column<T> {
+  return {
+    key: "date",
+    header,
+    hideBelow: "md",
+    // A fixed share rather than `shrink`. Under `even` the tables use
+    // `table-fixed`, where shrink is ignored and every column takes an equal
+    // slice — and an equal slice of a table this narrow clipped "05 Aug 2026"
+    // to "05 Aug 2…". This is the one width a date needs and no more, which
+    // also hands the surplus back to the columns holding names.
+    width: "13%",
+    render: (row) => <Stamp {...pick(row)} />,
   };
 }
 
@@ -209,14 +279,10 @@ export function PurchaseOrders() {
         <span className="text-[13px] text-ink-soft">{row.warehouse_name}</span>
       ),
     },
-    {
-      key: "date",
-      header: "Ordered",
-      hideBelow: "md",
-      render: (row) => (
-        <span className="text-[13px] text-ink-soft">{date(row.order_date)}</span>
-      ),
-    },
+    stampColumn<PurchaseOrder>("Ordered", (row) => ({
+      business: row.order_date,
+      stamp: row.created_at,
+    })),
     {
       key: "gst",
       header: "GST",
@@ -321,10 +387,11 @@ export function PurchaseOrders() {
         carries weight standing next to the form it fills in. So it is stated
         here, one click from the thing it does.
 
-        Gated on grn.create, the same permission the intake endpoint demands,
-        so this never advertises a button that would be refused.
+        Gated on po.create rather than grn.create: scanning raises the order
+        now, so this advertises the New order dialog and would be a button
+        that got refused for anyone who cannot raise one.
       */}
-      {can("grn.create") && (
+      {can("po.create") && (
         <Card className="mb-3 border-brand/25 bg-brand-soft/40 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -337,9 +404,10 @@ export function PurchaseOrders() {
                   <Badge tone="brand">AI — vision + language</Badge>
                 </div>
                 <p className="text-[13px] leading-relaxed text-ink-soft">
-                  Photograph the invoice and the batch codes, expiries,
-                  quantities and rates fill in the goods receipt — including
-                  trade names no rule can reach, like OMEZ-20 for omeprazole.
+                  Photograph the invoice and the products, quantities and rates
+                  fill in the order — including trade names no rule can reach,
+                  like OMEZ-20 for omeprazole. The file is kept against the
+                  order and can be downloaded again when the goods arrive.
                 </p>
                 {/*
                   The part that matters more than the feature: what stops it
@@ -361,7 +429,7 @@ export function PurchaseOrders() {
             <Button
               variant="primary"
               className="shrink-0"
-              onClick={() => setGrnOpen(true)}
+              onClick={() => setFormOpen(true)}
             >
               <ScanLine className="size-4" /> Scan an invoice
             </Button>
@@ -400,6 +468,10 @@ export function PurchaseOrders() {
           <div className="space-y-3">
             <div className="divide-y divide-line rounded-lg border border-line px-3">
               <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact
+                label="Ordered"
+                value={`${date(acting.order_date)} · ${clock(acting.created_at)}`}
+              />
               <SheetFact label="Raised by" value={acting.created_by_name ?? "—"} />
               {acting.approved_by_name && (
                 <SheetFact label="Approved by" value={acting.approved_by_name} />
@@ -541,6 +613,24 @@ export function SalesOrders() {
       api.get<Page<SalesOrder>>(`/api/v1/sales-orders${qs({ page, size: 25 })}`),
   });
 
+  /**
+   * Reserve batches against an order, and show which ones.
+   *
+   * Called directly rather than through `action.mutate` because the response
+   * body is the point — the operator needs to see the batches FEFO picked.
+   * That means the two things `mutate` would have done have to be done by
+   * hand, and both were missing:
+   *
+   * `settled()`, because allocation moves the order from DRAFT to ALLOCATED
+   * and reserves stock. Without it the row kept saying Draft for a document
+   * that had already moved, and the only way to see the truth was to reload
+   * the page.
+   *
+   * `report()`, because the old catch block re-sent the same request through
+   * `mutate` just to get its error into the banner. On a refusal that is
+   * merely wasteful; on a call that half-succeeded it is a second attempt to
+   * reserve stock, issued by the error handler.
+   */
   async function allocate(id: number) {
     try {
       const result = await api.post<Allocation[]>(
@@ -549,8 +639,9 @@ export function SalesOrders() {
       setAllocations(result);
       action.reset();
     } catch (err) {
-      // Surfaced through the shared banner.
-      action.mutate({ path: `/api/v1/sales-orders/${id}/allocate` });
+      action.report(err);
+    } finally {
+      action.settled();
     }
   }
 
@@ -577,14 +668,10 @@ export function SalesOrders() {
         <span className="text-[13px] text-ink-soft">{row.warehouse_name}</span>
       ),
     },
-    {
-      key: "date",
-      header: "Ordered",
-      hideBelow: "md",
-      render: (row) => (
-        <span className="text-[13px] text-ink-soft">{date(row.order_date)}</span>
-      ),
-    },
+    stampColumn<SalesOrder>("Ordered", (row) => ({
+      business: row.order_date,
+      stamp: row.created_at,
+    })),
     {
       key: "status",
       header: "Status",
@@ -659,7 +746,10 @@ export function SalesOrders() {
             <div className="divide-y divide-line rounded-lg border border-line px-3">
               <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
               <SheetFact label="Ship from" value={acting.warehouse_name ?? "—"} />
-              <SheetFact label="Ordered" value={date(acting.order_date)} />
+              <SheetFact
+                label="Ordered"
+                value={`${date(acting.order_date)} · ${clock(acting.created_at)}`}
+              />
               <SheetFact label="Total" value={money(acting.grand_total)} />
             </div>
 
@@ -871,7 +961,11 @@ export function Transfers() {
     {
       key: "route",
       header: "Route",
-      width: "34%",
+      // Two branch names and an arrow. "Central Warehouse - Mumbai → Pune
+      // Branch (Commercial)" is the longest pair the seed can produce and it
+      // is the whole content of a transfer row, so it gets the width it needs
+      // rather than an equal share.
+      width: "36%",
       card: "secondary",
       render: (row) => (
         <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-ink-soft">
@@ -889,6 +983,11 @@ export function Transfers() {
       card: "meta",
       render: (row) => <span>{row.lines.length}</span>,
     },
+    // The list is newest first, and a column of transfer numbers is a poor way
+    // to show that — they ascend with the id, so the order was correct and
+    // read as arbitrary. A transfer bears no business date of its own, so the
+    // clock is all there is.
+    stampColumn<Transfer>("Raised", (row) => ({ stamp: row.created_at })),
     raisedByColumn<Transfer>(),
     {
       key: "status",
@@ -958,12 +1057,88 @@ export function Transfers() {
           <div className="space-y-3">
             <div className="divide-y divide-line rounded-lg border border-line px-3">
               <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact
+                label="Raised"
+                value={`${date(acting.created_at)} · ${clock(acting.created_at)}`}
+              />
               <SheetFact label="Raised by" value={acting.created_by_name ?? "—"} />
               {acting.approved_by_name && (
                 <SheetFact label="Approved by" value={acting.approved_by_name} />
               )}
-              <SheetFact label="Items" value={acting.lines.length} />
             </div>
+
+            {/*
+              What is actually being moved. The sheet used to say "Items: 3"
+              and stop there, which is the one thing a person opening a
+              transfer already knows they want spelled out — the API has
+              carried the product names all along.
+            */}
+            <ul className="divide-y divide-line rounded-lg border border-line px-3">
+              {acting.lines.map((line) => {
+                // Batches with a code. An untracked product ships without one,
+                // and printing "batch —" against a box of syringes invents a
+                // gap where there is none.
+                const sent = line.batches.filter((b) => b.lot_code);
+                return (
+                  <li key={line.id} className="py-2.5">
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-ink">
+                          {line.product_name ?? `Product ${line.product_id}`}
+                        </p>
+                        <p className="truncate text-[11px] text-ink-faint">
+                          <span className="font-mono">{line.sku ?? "—"}</span>
+                          {/* Before dispatch there is genuinely no answer —
+                              FEFO chooses when the stock moves. Saying so
+                              beats a blank, which reads as a batch nobody
+                              bothered to record. */}
+                          {!sent.length && acting.status === "DRAFT" && (
+                            <> · batch chosen at dispatch</>
+                          )}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-sm font-medium tnum">
+                        {/* Once it has landed, what arrived is the fact worth
+                            showing; a short receipt is exactly what someone
+                            opens this sheet to find. */}
+                        {acting.status === "COMPLETED" &&
+                        num(line.qty_received) !== num(line.quantity) ? (
+                          <span className="text-warn">
+                            {qty(line.qty_received)} of {qty(line.quantity)}
+                          </span>
+                        ) : (
+                          qty(line.quantity)
+                        )}
+                      </span>
+                    </div>
+
+                    {/* One row per batch that actually left. Usually one; two
+                        when the oldest lot did not cover the line, which is
+                        ordinary FEFO and worth being able to see — a recall
+                        traces by batch, so "which ones went to Pune" is a
+                        question this sheet should be able to answer. */}
+                    {sent.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {sent.map((batch, index) => (
+                          <li
+                            key={batch.lot_id ?? index}
+                            className="flex items-baseline gap-2 text-[11px] text-ink-faint"
+                          >
+                            <span className="font-mono">{batch.lot_code}</span>
+                            {batch.expiry_date && (
+                              <span>exp {date(batch.expiry_date)}</span>
+                            )}
+                            <span className="flex-1 text-right tnum">
+                              {qty(batch.quantity)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
 
             {/*
               A transfer moves in three steps, and only one is ever available.
@@ -1094,6 +1269,10 @@ export function Adjustments() {
       key: "ref",
       header: "Adjustment",
       card: "primary",
+      // The document number is the one thing on the row that identifies it, so
+      // it is the last thing that should be clipped. An equal share stopped
+      // being enough once this table gained a date column.
+      width: "20%",
       render: (row) => (
         <div className="min-w-0">
           <p className="truncate font-mono text-[13px] font-medium text-ink">
@@ -1126,6 +1305,9 @@ export function Adjustments() {
         );
       },
     },
+    // This screen carried no date at all — a stock correction with no way to
+    // say when it was made, which is the first thing anyone auditing one asks.
+    stampColumn<Adjustment>("Raised", (row) => ({ stamp: row.created_at })),
     raisedByColumn<Adjustment>(),
     {
       key: "status",
@@ -1216,6 +1398,10 @@ export function Adjustments() {
           <div className="space-y-3">
             <div className="divide-y divide-line rounded-lg border border-line px-3">
               <SheetFact label="Status" value={<StatusBadge status={acting.status} />} />
+              <SheetFact
+                label="Raised"
+                value={`${date(acting.created_at)} · ${clock(acting.created_at)}`}
+              />
               <SheetFact label="Raised by" value={acting.created_by_name ?? "—"} />
               {acting.approved_by_name && (
                 <SheetFact label="Approved by" value={acting.approved_by_name} />

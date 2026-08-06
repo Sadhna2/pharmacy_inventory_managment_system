@@ -48,8 +48,13 @@ export interface Column<T> {
 /**
  * Does this column hug its content rather than share the spare width?
  *
- * Never under `even`: there the browser is dividing the width itself and any
- * per-column instruction only gets in its way.
+ * Never under `even`, and the exception that looked obvious is worth recording
+ * so nobody re-adds it. Giving the row-menu column `width: 1%` there does not
+ * hug: `table-fixed` takes a declared width literally, so the cell became
+ * twelve pixels, its button overflowed, and the table grew past its container
+ * — a horizontal scrollbar on every operations screen and the menu itself
+ * pushed off the right edge. `1%` only means "as small as the content allows"
+ * under automatic layout, which is exactly what `even` turns off.
  */
 function hugs<T>(col: Column<T>, even: boolean): boolean {
   return even ? false : (col.shrink ?? Boolean(col.numeric));

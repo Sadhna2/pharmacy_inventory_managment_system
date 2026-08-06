@@ -228,11 +228,18 @@ def test_stock_cannot_be_received_into_a_branch_the_user_is_not_at(
     )
 
     assert response.status_code == 404
+    # Re-read through the same IN_TRANSIT filter it was found with, not the
+    # first page of every transfer ever raised. This suite shares a database
+    # with the ones that raise transfers by the dozen, and the seeded row this
+    # test picks is old — once enough had been written it fell off page one
+    # and `next()` raised StopIteration, reporting a scope failure that had
+    # not happened. Asking "is it still in transit" is also the question.
+    still_in_transit = {
+        t["id"]
+        for t in _items(client, admin, "/api/v1/transfers?status=IN_TRANSIT&size=200")
+    }
+    assert elsewhere["id"] in still_in_transit
     after = client.get("/api/v1/transfers?size=200", headers=admin).json()
-    still_in_transit = next(
-        t for t in after["items"] if t["id"] == elsewhere["id"]
-    )
-    assert still_in_transit["status"] == "IN_TRANSIT"
     assert after["total"] == before
 
 

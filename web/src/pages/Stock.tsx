@@ -4,7 +4,7 @@ import { Search, Undo2, X } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDebounced } from "@/lib/hooks";
-import { cn, date, money, num, qty, relativeDays } from "@/lib/format";
+import { clock, cn, date, money, num, qty, relativeDays } from "@/lib/format";
 import type { Balance, Movement, Page, Warehouse } from "@/lib/types";
 import { PageHeader } from "@/components/Shell";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -409,13 +409,18 @@ export function Movements() {
       header: "When",
       hideBelow: "md",
       card: "secondary",
+      // Day and month only, with no year and no clock, on the one screen that
+      // is nothing but a chronological list. Two postings a minute apart were
+      // indistinguishable, and two years of history all read as the same day.
       render: (row) => (
-        <span className="text-[13px] text-ink-soft">
-          {new Date(row.occurred_at).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-          })}
-        </span>
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[13px] text-ink-soft">
+            {date(row.occurred_at)}
+          </p>
+          <p className="truncate text-[11px] text-ink-faint tnum">
+            {clock(row.occurred_at)}
+          </p>
+        </div>
       ),
     },
     {

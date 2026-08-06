@@ -170,17 +170,29 @@ def test_manager_can_create_product(client, manager):
 def test_cost_visibility_is_a_permission(client, staff, manager):
     """Staff record stock all day but must never see margins.
 
-    Only some movement types carry a cost at all — a status change (recall,
-    QC release) moves quantity between buckets and has none. So compare the
-    two roles over the same window rather than over the newest row, whose
-    type depends on whatever ran last.
-    """
-    q = "/api/v1/stock/movements?size=100"
-    staff_rows = client.get(q, headers=staff).json()["items"]
-    mgr_rows = client.get(q, headers=manager).json()["items"]
+    Only some movement types carry a cost at all — a status change (recall, QC
+    release) moves quantity between buckets and has none, and neither does a
+    transfer, which moves stock the firm already owns. So the window is one
+    type, and a type that always has a cost: a purchase receipt is the moment
+    money was paid, and the price is the point of the record.
 
+    Not "the newest hundred rows of any type". This suite writes real
+    movements into a database it shares with every other suite, and almost all
+    of them are transfers and issues with no cost — so that window filled up
+    with costless rows as the database aged, and the test began failing on a
+    permission that had not changed. What it asserts has to be true of the
+    seed, not of whatever ran in the last ten minutes.
+
+    Manager first, so a seed holding no purchase receipts at all fails loudly
+    here rather than passing the staff half vacuously.
+    """
+    q = "/api/v1/stock/movements?movement_type=PURCHASE_RECEIPT&size=100"
+    mgr_rows = client.get(q, headers=manager).json()["items"]
+    staff_rows = client.get(q, headers=staff).json()["items"]
+
+    assert mgr_rows, "no purchase receipts to compare the two roles over"
+    assert all(r["unit_cost"] is not None for r in mgr_rows)
     assert all(r["unit_cost"] is None for r in staff_rows)
-    assert any(r["unit_cost"] is not None for r in mgr_rows)
 
 
 def test_staff_scoped_to_own_branch(client, staff):

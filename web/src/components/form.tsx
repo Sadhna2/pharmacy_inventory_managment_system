@@ -29,7 +29,7 @@ import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Trash2 } from "lucide-react";
 import { ApiError, api, qs } from "@/lib/api";
-import { cn } from "@/lib/format";
+import { cn, num, qty } from "@/lib/format";
 import type { Page, Product, TrackingMode } from "@/lib/types";
 import { Button, Input, Select } from "./ui";
 
@@ -149,12 +149,21 @@ export function ProductPicker({
   onChange,
   placeholder = "Search a product…",
   invalid,
+  stockAt,
 }: {
   /** Only the name and SKU are displayed, so a line's narrow product fits. */
   value: LineProduct | null;
   onChange: (product: Product | null) => void;
   placeholder?: string;
   invalid?: boolean;
+  /**
+   * Count stock at this warehouse rather than across the chain.
+   *
+   * A transfer is picked off one branch's shelf, so the chain total is the
+   * wrong number to show beside a source that holds none. A sales order is
+   * planned across branches, so there it is the right one — leave this unset.
+   */
+  stockAt?: string | number | null;
 }) {
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
@@ -193,14 +202,21 @@ export function ProductPicker({
   }, [open, place]);
 
   const { data, isFetching } = useQuery({
-    queryKey: ["products", "picker", term],
+    queryKey: ["products", "picker", term, stockAt ?? "chain"],
     queryFn: () =>
       // Retired products are offered nowhere a new document is being written.
       // They stay readable on the documents that already name them — retiring
       // is how the catalogue stops something being ordered again, not how it
       // erases what was ordered before.
       api.get<Page<Product>>(
-        `/api/v1/products${qs({ q: term, size: 20, is_active: true })}`,
+        `/api/v1/products${qs({
+          q: term,
+          size: 20,
+          is_active: true,
+          // Quantities come back on the product itself, so the list still
+          // costs one request per keystroke rather than one per row.
+          stock_at: stockAt ? Number(stockAt) : undefined,
+        })}`,
       ),
     enabled: open,
   });
@@ -261,25 +277,43 @@ export function ProductPicker({
               Nothing matches “{term}”
             </li>
           ) : (
-            data.items.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(p);
-                    setOpen(false);
-                  }}
-                  className="flex w-full items-baseline justify-between gap-3 px-3 py-1.5 text-left hover:bg-muted"
-                >
-                  <span className="min-w-0 truncate text-[13px] text-ink">
-                    {p.name}
-                  </span>
-                  <span className="shrink-0 font-mono text-[11px] text-ink-faint">
-                    {p.sku}
-                  </span>
-                </button>
-              </li>
-            ))
+            data.items.map((p) => {
+              // Free stock, not gross: what is already promised to an order
+              // cannot be promised again, and the number is here to be typed
+              // a quantity against.
+              const free = num(p.qty_available ?? p.qty_on_hand);
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(p);
+                      setOpen(false);
+                    }}
+                    className="flex w-full items-baseline gap-3 px-3 py-1.5 text-left hover:bg-muted"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
+                      {p.name}
+                    </span>
+                    {/* Out of stock is still offered, and still says so. A
+                        product vanishing from a search reads as a hole in the
+                        catalogue, which is a different and more alarming
+                        problem than an empty shelf. */}
+                    <span
+                      className={cn(
+                        "shrink-0 text-[12px] tnum",
+                        free > 0 ? "text-ink-soft" : "text-ink-faint",
+                      )}
+                    >
+                      {qty(free)}
+                    </span>
+                    <span className="w-16 shrink-0 text-right font-mono text-[11px] text-ink-faint">
+                      {p.sku}
+                    </span>
+                  </button>
+                </li>
+              );
+            })
           )}
         </ul>,
         document.body,
@@ -364,6 +398,7 @@ export function LineItems({
   note,
   rowAction,
   lockProduct,
+  stockAt,
 }: {
   lines: Line[];
   onChange: (lines: Line[]) => void;
@@ -399,6 +434,8 @@ export function LineItems({
    * belongs to that order's line, and re-pointing it would silently orphan it.
    */
   lockProduct?: (line: Line, index: number) => boolean;
+  /** Passed straight to the picker — see `ProductPicker`. */
+  stockAt?: string | number | null;
 }) {
   const update = (key: number, patch: Partial<Line>) =>
     onChange(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -502,6 +539,7 @@ export function LineItems({
                       value={line.product}
                       onChange={(product) => update(line.key, { product })}
                       invalid={Boolean(problem)}
+                      stockAt={stockAt}
                     />
                   )}
                 </div>
