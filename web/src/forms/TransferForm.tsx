@@ -42,8 +42,9 @@ export function TransferForm({
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
 
   const warehouses = useQuery({
-    queryKey: ["warehouses"],
-    queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
+    queryKey: ["warehouses", "active"],
+    queryFn: () =>
+      api.get<Warehouse[]>("/api/v1/warehouses?is_active=true"),
     enabled: open,
   });
 
@@ -228,6 +229,10 @@ export function TransferForm({
           onChange={setLines}
           fieldErrors={submit.fieldErrors}
           validate={lineProblem}
+          // What the source branch holds, not what the chain holds. A transfer
+          // is picked off this shelf, so the chain total would be the one
+          // number guaranteed to mislead.
+          stockAt={fromId || null}
           columns={[
             {
               name: "lot",

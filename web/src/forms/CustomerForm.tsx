@@ -15,11 +15,22 @@ import { STATES } from "@/lib/states";
 export function CustomerForm({
   open,
   customer,
+  institutionalByDefault = true,
   onClose,
 }: {
   open: boolean;
   /** Null creates a new customer. */
   customer: Customer | null;
+  /**
+   * Which kind a *new* record starts as.
+   *
+   * The two live on separate tabs now, so the tab already answers this:
+   * pressing "New retail buyer" and being handed a form defaulted to
+   * institutional is the screen contradicting the button that opened it. Only
+   * a default — the toggle is still there, because it is the one field that
+   * decides whether a credit limit means anything.
+   */
+  institutionalByDefault?: boolean;
   onClose: () => void;
 }) {
   const editing = customer !== null;
@@ -43,7 +54,7 @@ export function CustomerForm({
     submit.reset();
     setCode(customer?.code ?? "");
     setName(customer?.name ?? "");
-    setInstitutional(customer?.is_institutional ?? true);
+    setInstitutional(customer?.is_institutional ?? institutionalByDefault);
     setGstin(customer?.gstin ?? "");
     setStateCode(customer?.state_code ?? "MH");
     setPhone(customer?.phone ?? "");

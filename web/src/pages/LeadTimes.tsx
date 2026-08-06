@@ -105,7 +105,7 @@ function SupplierDetail({
   lookback: number | "";
   onClose: () => void;
 }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["lead-time", supplierId, lookback],
     queryFn: () =>
       api.get<LeadTimeDetail>(
@@ -121,12 +121,12 @@ function SupplierDetail({
       title={data?.stats.supplier_name ?? "Supplier"}
       description={data?.stats.verdict}
     >
-      {isLoading ? (
+      {isPending ? (
         <div className="flex justify-center py-10">
           <Spinner className="size-5" />
         </div>
       ) : error ? (
-        <ErrorState error={error} />
+        <ErrorState error={error} onRetry={refetch} />
       ) : data ? (
         <div className="space-y-5">
           {/* What to do about it, before the evidence for it. */}
@@ -272,7 +272,7 @@ export function LeadTimes() {
   const [lookback, setLookback] = useState<number | "">("");
   const [selected, setSelected] = useState<number | null>(null);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["lead-times", lookback],
     queryFn: () =>
       api.get<LeadTimeList>(`/api/v1/ai/lead-times${qs({ lookback_days: lookback })}`),
@@ -462,7 +462,9 @@ export function LeadTimes() {
               columns={columns}
               rows={suppliers}
               rowKey={(row) => row.supplier_id}
-              loading={isLoading}
+              loading={isPending}
+              error={error}
+              onRetry={refetch}
               onRowClick={(row) => setSelected(row.supplier_id)}
               emptyTitle="No deliveries in this window"
               emptyDescription="Lead times are measured from received purchase orders. Widen the window, or receive some goods first."

@@ -332,7 +332,7 @@ export function Reorder() {
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
   });
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["reorder", { warehouse, includeOk }],
     queryFn: () =>
       api.get<ReorderReport>(
@@ -562,7 +562,9 @@ export function Reorder() {
               columns={columns}
               rows={rows}
               rowKey={(row) => row.key}
-              loading={isLoading}
+              loading={isPending}
+              error={error}
+              onRetry={refetch}
               onRowClick={(row) => setSelected(row)}
               emptyTitle="Nothing needs ordering"
               emptyDescription="Every product is above its reorder point for the locations in view."

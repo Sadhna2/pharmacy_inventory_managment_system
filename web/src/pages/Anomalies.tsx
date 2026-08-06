@@ -208,7 +208,7 @@ export function Anomalies() {
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
   });
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["anomalies", { lookback, kind, warehouse, severity }],
     queryFn: () =>
       api.get<AnomalyReport>(
@@ -422,7 +422,9 @@ export function Anomalies() {
               columns={columns}
               rows={data?.anomalies ?? []}
               rowKey={(row) => row.key}
-              loading={isLoading}
+              loading={isPending}
+              error={error}
+              onRetry={refetch}
               onRowClick={(row) => setSelected(row)}
               emptyTitle="Nothing out of the ordinary"
               emptyDescription="No movement in this window broke from the pattern around it. Widen the window or lower the severity filter to see more."

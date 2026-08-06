@@ -52,7 +52,7 @@ export function Products() {
 
   const belowReorder = params.get("below_reorder") === "true";
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["products", { search, tracking, belowReorder, showRetired, page }],
     queryFn: () =>
       api.get<Page<Product>>(
@@ -281,7 +281,9 @@ export function Products() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}

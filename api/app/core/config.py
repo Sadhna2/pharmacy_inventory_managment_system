@@ -27,6 +27,33 @@ class Settings(BaseSettings):
     #: worth having, and CI must not need a key or make network calls.
     intake_fixture_dir: str = ""
 
+    # The registered identity of the firm doing the selling, printed on every
+    # tax invoice. Deliberately configuration rather than a warehouse column:
+    # a branch is a place, and it is the business that holds the registration.
+    #
+    # There is no default GSTIN, and there must not be. Rule 46(b) makes the
+    # supplier's GSTIN a mandatory particular, so a document headed TAX INVOICE
+    # without one is not a tax invoice — the buyer cannot claim input credit
+    # against it. A placeholder would produce a document that looks valid and
+    # is not, which is worse than refusing to produce one at all.
+    seller_legal_name: str = ""
+    seller_gstin: str = ""
+    seller_address: str = ""
+
+    # How the buyer reaches the firm about the document in their hand. Unlike
+    # the three above these are not statutory particulars, so they are printed
+    # when set and simply left off when not — no placeholder, for the same
+    # reason there is no default GSTIN. Two numbers is the usual arrangement,
+    # a landline and a mobile, so the field takes a list separated by commas
+    # and prints it as given.
+    seller_phone: str = ""
+    seller_email: str = ""
+
+    @property
+    def can_issue_tax_invoice(self) -> bool:
+        """Whether a document may lawfully be captioned TAX INVOICE."""
+        return bool(self.seller_legal_name and self.seller_gstin)
+
     @property
     def invoice_intake_enabled(self) -> bool:
         return bool(self.gemini_api_key or self.intake_fixture_dir)

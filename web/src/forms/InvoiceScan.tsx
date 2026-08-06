@@ -32,6 +32,7 @@ import { useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  Download,
   Info,
   OctagonAlert,
   ScanLine,
@@ -48,20 +49,20 @@ const ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 const SEVERITY = {
   BLOCK: {
     icon: OctagonAlert,
-    tone: "text-rose-700 dark:text-rose-300",
-    dot: "bg-rose-500",
+    tone: "text-danger",
+    dot: "bg-danger",
     label: "Must be checked",
   },
   REVIEW: {
     icon: AlertTriangle,
-    tone: "text-amber-700 dark:text-amber-300",
-    dot: "bg-amber-500",
+    tone: "text-warn-strong",
+    dot: "bg-warn-strong",
     label: "Worth a look",
   },
   INFO: {
     icon: Info,
-    tone: "text-slate-600 dark:text-slate-400",
-    dot: "bg-slate-400",
+    tone: "text-ink-soft",
+    dot: "bg-ink-faint",
     label: "Noted",
   },
 } as const;
@@ -107,6 +108,107 @@ async function upload(
     });
   }
   return response.json();
+}
+
+/**
+ * Keep the file against the order it raised.
+ *
+ * Separate from reading it, and after the order exists, because the order is
+ * what it hangs on — there is nothing to attach a photograph to until the
+ * document has an id. Two requests rather than one multipart create, which
+ * also means a failure here loses the picture and not the order.
+ */
+export async function storeInvoiceAgainstOrder(
+  poId: number,
+  file: File,
+): Promise<void> {
+  const body = new FormData();
+  body.append("file", file);
+  const token = getAccessToken();
+  const response = await fetch(`/api/v1/purchase-orders/${poId}/invoice`, {
+    method: "PUT",
+    body,
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    throw new ApiError(response.status, {
+      type: "about:blank",
+      title: "Upload failed",
+      status: response.status,
+      detail: "The invoice could not be stored.",
+      ...problem,
+    });
+  }
+}
+
+/**
+ * Download the stored invoice for an order.
+ *
+ * Fetched rather than linked, for the reason `api.getText` documents: a plain
+ * `<a href>` is a top-level navigation, it carries no Authorization header,
+ * and the browser would render a 401 where the invoice should be. So the
+ * bytes come back through the ordinary authenticated path and are handed to
+ * the browser as a blob.
+ */
+export function InvoiceDownload({
+  poId,
+  number,
+}: {
+  poId: number;
+  number: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchIt = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const token = getAccessToken();
+      const response = await fetch(`/api/v1/purchase-orders/${poId}/invoice`, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+
+      // Read out of the header the server set, so the file lands named after
+      // the order rather than as "invoice" or a uuid.
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = named ?? `${number}-invoice`;
+      link.click();
+      // Freed on the next tick rather than immediately: revoking synchronously
+      // races the click the browser has not finished acting on, and the
+      // download arrives empty.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setError("The invoice could not be downloaded.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={() => void fetchIt()}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline disabled:opacity-60"
+      >
+        <Download className="size-3.5" />
+        {busy ? "Fetching…" : `Invoice for ${number}`}
+      </button>
+      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+    </div>
+  );
 }
 
 /** One product, as this distributor prints it. */
@@ -170,8 +272,13 @@ export function InvoiceScanButton({
    */
   supplierId?: string;
   disabled?: boolean;
-  /** Handed the proposal. The form decides what to do with it. */
-  onScanned: (result: InvoiceIntake) => void;
+  /**
+   * Handed the proposal, and the file it was read from. The form decides what
+   * to do with both — the purchase order form keeps the file so it can be
+   * stored against the order the scan is about to raise, which is the only
+   * copy of a document the order's own quantities came off.
+   */
+  onScanned: (result: InvoiceIntake, file: File) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -182,7 +289,7 @@ export function InvoiceScanButton({
     setBusy(true);
     setError(null);
     try {
-      onScanned(await upload(file, { warehouseId, poId, supplierId }));
+      onScanned(await upload(file, { warehouseId, poId, supplierId }), file);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -216,8 +323,20 @@ export function InvoiceScanButton({
       >
         <ScanLine className="size-4" /> Scan invoice
       </Button>
+      {/*
+        Capped and wrapping, because this sits in a `shrink-0` group inside a
+        flex row: an unconstrained line grows the group instead of wrapping,
+        and the longest message here — the one naming GEMINI_API_KEY — pushed
+        the whole control out past the border of the panel it lives in.
+
+        `text-danger` rather than a rose literal so it matches FormError and
+        every other error in the product. This was the only place in the app
+        picking its own red.
+      */}
       {error && (
-        <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>
+        <p className="max-w-[20rem] text-right text-xs leading-snug text-danger">
+          {error}
+        </p>
       )}
     </div>
   );
@@ -343,12 +462,12 @@ function FlagRow({ flag, settled }: { flag: IntakeFlag; settled?: boolean }) {
   if (settled) {
     return (
       <li className="flex gap-2 py-1 opacity-55">
-        <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-600" />
-        <span className="text-xs leading-relaxed line-through decoration-slate-400">
+        <Check className="mt-0.5 size-3.5 shrink-0 text-ok-strong" />
+        <span className="text-xs leading-relaxed line-through decoration-ink-faint">
           <span className="font-medium">
             {flag.line_no ? `Line ${flag.line_no}` : "Invoice"}
           </span>{" "}
-          <span className="text-slate-500">{flag.message}</span>
+          <span className="text-ink-faint">{flag.message}</span>
         </span>
       </li>
     );
@@ -360,14 +479,14 @@ function FlagRow({ flag, settled }: { flag: IntakeFlag; settled?: boolean }) {
         <span className="font-medium">
           {flag.line_no ? `Line ${flag.line_no}` : "Invoice"}
         </span>{" "}
-        <span className="text-slate-600 dark:text-slate-400">
+        <span className="text-ink-soft">
           {flag.message}
         </span>
         {flag.suggestion && (
           <>
             {" "}
-            <span className="text-slate-500">did you mean</span>{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] dark:bg-slate-800">
+            <span className="text-ink-faint">did you mean</span>{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
               {flag.suggestion}
             </code>
             ?
@@ -429,23 +548,23 @@ export function ScanFindings({
       className={cn(
         "rounded-lg border p-3",
         blocking || unmatched
-          ? "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20"
-          : "border-emerald-300 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20",
+          ? "border-warn/30 bg-warn-soft"
+          : "border-ok/30 bg-ok-soft",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-slate-500" />
+          <Sparkles className="size-4 text-ink-faint" />
           <div>
             <p className="text-sm font-medium">
               Read {lines} {lines === 1 ? "line" : "lines"} from the invoice
             </p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">
+            <p className="text-xs text-ink-soft">
               {resolved} matched to products
               {unmatched > 0 && (
                 <>
                   {" · "}
-                  <span className="font-medium text-amber-700 dark:text-amber-300">
+                  <span className="font-medium text-warn-strong">
                     {unmatched} need{unmatched === 1 ? "s" : ""} a product
                     choosing
                   </span>
@@ -454,7 +573,7 @@ export function ScanFindings({
               {blocking > 0 && (
                 <>
                   {" · "}
-                  <span className="font-medium text-rose-700 dark:text-rose-300">
+                  <span className="font-medium text-danger">
                     {blocking} to check
                   </span>
                 </>
@@ -468,7 +587,7 @@ export function ScanFindings({
       </div>
 
       {sorted.length > 0 && (
-        <ul className="mt-2 divide-y divide-black/5 border-t border-black/5 pt-1 dark:divide-white/5 dark:border-white/5">
+        <ul className="mt-2 divide-y divide-line border-t border-line pt-1">
           {sorted.map((flag, i) => (
             <FlagRow key={`${flag.field}-${flag.line_no}-${i}`} flag={flag} />
           ))}
@@ -482,11 +601,11 @@ export function ScanFindings({
         believed. Kept behind a summary so it never crowds what is still open.
       */}
       {done.length > 0 && (
-        <details className="mt-2 border-t border-black/5 pt-1 dark:border-white/5">
-          <summary className="cursor-pointer text-xs font-medium text-emerald-700 dark:text-emerald-300">
+        <details className="mt-2 border-t border-line pt-1">
+          <summary className="cursor-pointer text-xs font-medium text-ok-strong">
             {done.length} answered on the form
           </summary>
-          <ul className="divide-y divide-black/5 dark:divide-white/5">
+          <ul className="divide-y divide-line">
             {done.map((flag, i) => (
               <FlagRow
                 key={`${flag.field}-${flag.line_no}-${i}`}
@@ -498,7 +617,7 @@ export function ScanFindings({
         </details>
       )}
 
-      <p className="mt-2 text-[11px] text-slate-500">
+      <p className="mt-2 text-[11px] text-ink-faint">
         Nothing has been received yet. Check the rows against the cartons, then
         press Receive into stock as usual.
       </p>

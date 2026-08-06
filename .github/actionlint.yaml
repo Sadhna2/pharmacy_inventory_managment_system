@@ -1,0 +1,15 @@
+# Labels actionlint cannot know about, because they belong to a runner we
+# registered rather than to GitHub's hosted pool.
+#
+# Without this, linting the workflows reports the deploy job's runner as an
+# unknown label — one warning, on every run, about the one line that is
+# deliberately not a hosted runner. A linter that always has something to say
+# is a linter people stop reading.
+#
+#   docker run --rm -v "$PWD":/repo --workdir /repo rhysd/actionlint:latest
+self-hosted-runner:
+  labels:
+    # The EC2 box the deploy job rolls out on. It is reachable only from a
+    # push to main or a manual dispatch — never from a pull request, so a fork
+    # cannot reach this machine.
+    - pharmacy-prod

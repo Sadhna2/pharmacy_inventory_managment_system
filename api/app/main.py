@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import DataError
 
 from app.ai.anomaly import router as anomaly_router
 from app.ai.forecasting import router as forecasting_router
@@ -50,8 +51,47 @@ def _warm_forecast_cache() -> None:
         log.warning("forecast_cache_warm_failed", error=str(exc))
 
 
+def _report_invoicing_configuration() -> None:
+    """Say at start-up whether tax invoices can be issued at all.
+
+    They could not, on the deployed server, for as long as the feature had
+    existed. `SELLER_LEGAL_NAME` and `SELLER_GSTIN` were in the server's own
+    `.env` and were never listed in the compose service, so they stopped at
+    the container boundary — and the only symptom was Print invoice answering
+    409, which is the same thing it says when a branch has no registration
+    recorded. Two very different problems, one message, and nothing anywhere
+    to tell them apart.
+
+    A misconfiguration that can only be discovered by a user clicking a button
+    is one that gets discovered by a user clicking a button. This makes the
+    server state its own answer once per boot, where a deploy log will show
+    it.
+    """
+    if settings.can_issue_tax_invoice:
+        log.info(
+            "tax invoicing enabled",
+            seller=settings.seller_legal_name,
+            gstin=settings.seller_gstin,
+        )
+        return
+    missing = [
+        name
+        for name, value in (
+            ("SELLER_LEGAL_NAME", settings.seller_legal_name),
+            ("SELLER_GSTIN", settings.seller_gstin),
+        )
+        if not value
+    ]
+    log.warning(
+        "tax invoicing DISABLED — every invoice will be refused",
+        missing=", ".join(missing),
+        hint="set these in the environment the API container actually receives",
+    )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _report_invoicing_configuration()
     threading.Thread(
         target=_warm_forecast_cache, name="forecast-warmup", daemon=True
     ).start()
@@ -133,16 +173,68 @@ async def validation_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     errors = [
-        {"field": ".".join(str(p) for p in e["loc"][1:]), "message": e["msg"]}
+        {
+            "field": ".".join(str(p) for p in e["loc"][1:]),
+            # Pydantic prefixes anything a validator raises as ValueError with
+            # "Value error, ". That is a fact about pydantic, and it is read by
+            # someone filling in a form who has never heard of it.
+            "message": e["msg"].removeprefix("Value error, "),
+        }
         for e in exc.errors()
     ]
+
+    # A rule that spans two fields — a GSTIN against the state it must open
+    # with — belongs to the model, not to either field, so pydantic gives it no
+    # location and the form has nothing to hang it under. "One or more fields
+    # are invalid" is then the only thing the user is told, which is exactly
+    # the message that leaves someone re-reading a form for the mistake.
+    #
+    # So when the whole failure is location-less, its own words become the
+    # detail. Anything with a location keeps the summary, because those are
+    # already rendered against the field they name.
+    unplaced = [e["message"] for e in errors if not e["field"]]
+    detail = (
+        unplaced[0]
+        if len(unplaced) == len(errors) == 1
+        else "One or more fields are invalid"
+    )
+
+    return _problem(
+        request, 422, "/errors/validation", "Validation failed", detail, errors
+    )
+
+
+@app.exception_handler(DataError)
+async def data_error_handler(request: Request, exc: DataError) -> JSONResponse:
+    """A value the database could not accept is the caller's problem, not ours.
+
+    The one that actually happens: an id above 2147483647. Every `{id}` path
+    here is a Python `int`, which has no upper bound, so it sails through
+    validation and Postgres rejects the comparison against an `integer`
+    column — surfacing as a bare 500, the same answer the API gives when it is
+    genuinely broken. Anyone probing ids would read that as "found something
+    and crashed it", which is the opposite of the truth.
+
+    422 rather than 404 because this is not "no such row": the value is not a
+    usable identifier at all, and the same fault arrives through numeric
+    filters where 404 would make no sense.
+
+    Scoped to DataError deliberately. Its siblings — IntegrityError, the
+    connection failures — are ours, and must keep reaching the handler below
+    that logs a trace.
+    """
+    log.warning(
+        "database_rejected_value",
+        path=request.url.path,
+        request_id=getattr(request.state, "request_id", None),
+        error=type(exc.orig).__name__ if exc.orig else type(exc).__name__,
+    )
     return _problem(
         request,
         422,
         "/errors/validation",
         "Validation failed",
-        "One or more fields are invalid",
-        errors,
+        "A value in this request is outside the range the system can store.",
     )
 
 

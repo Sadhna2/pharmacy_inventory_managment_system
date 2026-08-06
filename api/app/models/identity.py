@@ -67,11 +67,20 @@ class User(Base, TimestampMixin):
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     # Staff are scoped to one branch; managers and admins see everything.
     warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("warehouses.id"))
+    #: Which buyer this account speaks for. Set only on CUSTOMER accounts.
+    #:
+    #: A customer is not scoped by branch — they order from whichever branch
+    #: has the stock, so the branch scope that fits every internal role gives
+    #: them exactly nothing. The SRS says "own orders only", and this column is
+    #: what "own" means: without it there is no way to tell one buyer's orders
+    #: from another's, and the role could only ever show an empty screen.
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     role: Mapped[Role] = relationship(back_populates="users")
     warehouse: Mapped["Warehouse | None"] = relationship()  # noqa: F821
+    customer: Mapped["Customer | None"] = relationship()  # noqa: F821
 
     @property
     def permission_codes(self) -> list[str]:

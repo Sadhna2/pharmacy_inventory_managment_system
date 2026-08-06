@@ -247,7 +247,7 @@ export function Forecast() {
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
   });
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["forecast", { horizon, warehouse }],
     queryFn: () =>
       api.get<ForecastList>(
@@ -259,6 +259,11 @@ export function Forecast() {
   });
 
   const rows = data?.forecasts ?? [];
+  // The horizon box is empty until someone picks one, meaning "use the default
+  // set under Setup → Settings". The response says which number that turned
+  // out to be, so the labels below read it from there — a hardcoded 30 here
+  // would quietly disagree with the figures the moment the setting changed.
+  const effectiveHorizon = horizon || data?.horizon_days;
   const reliable = rows.filter((f) => f.confidence === "high").length;
   const totalUnits = rows.reduce((sum, f) => sum + f.total, 0);
   const medianWape = rows.length
@@ -301,7 +306,7 @@ export function Forecast() {
     },
     {
       key: "total",
-      header: `Next ${horizon}d`,
+      header: effectiveHorizon ? `Next ${effectiveHorizon}d` : "Next",
       numeric: true,
       card: "secondary",
       render: (row) => <span className="font-medium">{qty(row.total)}</span>,
@@ -411,7 +416,9 @@ export function Forecast() {
                   {qty(Math.round(totalUnits))}
                 </p>
                 <p className="text-[11px] text-ink-faint">
-                  Across the chain, next {horizon} days
+                  {effectiveHorizon
+                    ? `Across the chain, next ${effectiveHorizon} days`
+                    : "Across the chain"}
                 </p>
               </div>
             </Card>
@@ -442,7 +449,9 @@ export function Forecast() {
               columns={columns}
               rows={rows}
               rowKey={(row) => `${row.warehouse_id}:${row.product_id}`}
-              loading={isLoading}
+              loading={isPending}
+              error={error}
+              onRetry={refetch}
               onRowClick={(row) => setSelected(row)}
               emptyTitle="Nothing to forecast yet"
               emptyDescription="A series needs about three weeks of sales before it can be fitted."

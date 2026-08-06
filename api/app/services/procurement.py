@@ -84,6 +84,9 @@ def create_purchase_order(
                 unit_price=Decimal(line["unit_price"]),
                 taxable_value=tax.taxable_value,
                 gst_rate=tax.gst_rate,
+                # Frozen onto the line beside the rate it was taxed at, not
+                # read off the product later — see TaxLineMixin.
+                hsn_code=product.hsn_code,
                 cgst_amount=tax.cgst_amount,
                 sgst_amount=tax.sgst_amount,
                 igst_amount=tax.igst_amount,

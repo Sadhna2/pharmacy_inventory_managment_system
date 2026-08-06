@@ -8,12 +8,12 @@ resolves on the purchase orders that name it.
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_permission
-from app.core.errors import ConflictError, NotFoundError
+from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.db.session import get_db
 from app.models.enums import StockStatus
 from app.models.identity import User
@@ -43,11 +43,13 @@ from app.schemas.masters import (
     SupplierUpdate,
     UomIn,
     UomOut,
+    WalkInCustomerIn,
     WarehouseIn,
     WarehouseOut,
     WarehouseUpdate,
 )
-from app.services import audit
+from app.services import audit, gst
+from app.services.numbering import next_number
 
 router = APIRouter(tags=["master data"])
 
@@ -309,6 +311,28 @@ def create_warehouse(
     return warehouse
 
 
+def _refuse_a_registration_from_another_state(
+    *, gstin: str | None, state_code: str | None
+) -> None:
+    """The cross-field half of the GSTIN rule, applied to a merged record.
+
+    Only the pairing. The shape and the checksum are the schema's job and have
+    already run on anything the caller sent; what cannot be judged there is
+    whether the number belongs to this branch's state, because a patch may
+    carry either field alone.
+    """
+    if gst.gstin_state_matches(gstin or "", state_code or "") is False:
+        message = (
+            f"a GSTIN opens with its state's code, so a branch in "
+            f"{state_code} needs one starting "
+            f"{gst.gstin_prefix_for_state(state_code or '')}, not "
+            f"{(gstin or '')[:2]} — a registration belongs to one state"
+        )
+        # Named against the field as well as spelled out in the detail, so the
+        # form can put it under the input the user just typed in.
+        raise ValidationError(message, [{"field": "gstin", "message": message}])
+
+
 @router.patch("/warehouses/{warehouse_id}", response_model=WarehouseOut)
 def update_warehouse(
     warehouse_id: int,
@@ -319,6 +343,20 @@ def update_warehouse(
     warehouse = db.get(Warehouse, warehouse_id)
     if warehouse is None:
         raise NotFoundError(f"Warehouse {warehouse_id} not found")
+
+    # The schema checks a GSTIN against the state in the *same* payload, and a
+    # patch need not carry both. Sending only the number therefore reached the
+    # database unchecked — precisely the mistake the column exists to prevent,
+    # because pasting head office's registration onto a branch is a one-field
+    # edit. Here the row is in hand, so the value not being changed can be read
+    # rather than assumed.
+    sent = payload.model_dump(exclude_unset=True)
+    if "gstin" in sent or "state_code" in sent:
+        _refuse_a_registration_from_another_state(
+            gstin=sent.get("gstin", warehouse.gstin),
+            state_code=sent.get("state_code", warehouse.state_code),
+        )
+
     _apply_update(db, warehouse, payload, entity="warehouse", user=user)
     db.refresh(warehouse)
     return warehouse
@@ -450,13 +488,37 @@ def retire_bin(
 # --- suppliers & customers --------------------------------------------------
 
 
+def _matching(model, q: str):
+    """Name, code or GSTIN contains this, case-insensitively.
+
+    Filtered on the server rather than in the browser because these lists only
+    grow. Institutional customers stay in the dozens, but every walk-in served
+    at a counter becomes a row here — a chain of five branches produces
+    thousands in a year, and shipping all of them to filter three characters
+    against would get slower every month it ran.
+
+    GSTIN is in the list because it is how a buyer identifies themselves on
+    paper. Someone holding an invoice has the number in front of them and the
+    trading name may not match what was typed into this system.
+    """
+    needle = f"%{q.strip()}%"
+    return or_(
+        model.name.ilike(needle),
+        model.code.ilike(needle),
+        model.gstin.ilike(needle),
+    )
+
+
 @router.get("/suppliers", response_model=list[SupplierOut])
 def list_suppliers(
+    q: str | None = Query(None, description="Search name, code or GSTIN"),
     is_active: bool | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(VIEW),
 ):
     stmt = select(Supplier).order_by(Supplier.name)
+    if q:
+        stmt = stmt.where(_matching(Supplier, q))
     if is_active is not None:
         stmt = stmt.where(Supplier.is_active == is_active)
     return db.scalars(stmt).all()
@@ -510,12 +572,15 @@ def retire_supplier(
 
 @router.get("/customers", response_model=list[CustomerOut])
 def list_customers(
+    q: str | None = Query(None, description="Search name, code or GSTIN"),
     is_institutional: bool | None = None,
     is_active: bool | None = None,
     db: Session = Depends(get_db),
     _: User = Depends(VIEW),
 ):
     stmt = select(Customer).order_by(Customer.name)
+    if q:
+        stmt = stmt.where(_matching(Customer, q))
     if is_institutional is not None:
         stmt = stmt.where(Customer.is_institutional == is_institutional)
     if is_active is not None:
@@ -538,6 +603,70 @@ def create_customer(
         entity_type="customer",
         entity_id=customer.id,
         actor_user_id=user.id,
+    )
+    return customer
+
+
+@router.post("/customers/walk-in", response_model=CustomerOut, status_code=201)
+def create_walk_in_customer(
+    payload: WalkInCustomerIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("so.create")),
+):
+    """Capture the person at the counter without leaving the sales order.
+
+    Guarded by `so.create` rather than `master.manage`, because this is part of
+    ringing up a sale rather than an act of master-data administration. Whoever
+    may raise the order may name the buyer on it; anything more — a credit
+    limit, an address, retiring the record — still needs the master data screen.
+
+    The record is a real customer, so the sale has a real counterparty on it
+    and the same person coming back next month is found by name rather than
+    entered twice. What it is not is institutional: no credit limit, so the
+    order is settled at the counter, which is what a walk-in is.
+    """
+    state_code = (payload.state_code or "").strip().upper()
+    if not state_code:
+        # The branch the operator works at, and failing that the central
+        # warehouse — an admin has no home branch, and refusing them the form
+        # over a field they were never going to type would be absurd.
+        home = db.get(Warehouse, user.warehouse_id) if user.warehouse_id else None
+        if home is None:
+            home = db.scalar(select(Warehouse).where(Warehouse.is_central))
+        if home is None:
+            raise ValidationError(
+                "no state to fall back on — this system has no central "
+                "warehouse, so the buyer's state has to be given"
+            )
+        state_code = home.state_code
+
+    # The schema checked the shape and the checksum, and the pairing too if a
+    # state was typed. It cannot have checked the pairing against a state that
+    # was filled in here, which is the ordinary path.
+    _refuse_a_registration_from_another_state(
+        gstin=payload.gstin, state_code=state_code
+    )
+
+    customer = Customer(
+        code=next_number(db, "WI"),
+        name=payload.name.strip(),
+        is_institutional=False,
+        gstin=payload.gstin or None,
+        state_code=state_code,
+        # Blank rather than empty string, so "not recorded" is one value in
+        # the column and not two. The invoice prints these only when set.
+        phone=(payload.phone or "").strip() or None,
+        email=(payload.email or "").strip() or None,
+    )
+    db.add(customer)
+    db.flush()
+    audit.record(
+        db,
+        action="customer.create",
+        entity_type="customer",
+        entity_id=customer.id,
+        actor_user_id=user.id,
+        after={"name": customer.name, "code": customer.code, "walk_in": True},
     )
     return customer
 

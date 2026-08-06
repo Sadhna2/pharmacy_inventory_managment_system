@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.deps import require_permission
 from app.core.errors import ConflictError, NotFoundError
 from app.db.session import get_db
-from app.models.enums import StockStatus
+from app.models.enums import StockStatus, TrackingMode
 from app.models.identity import User
 from app.models.masters import Product
 from app.models.stock import StockBalance
@@ -53,15 +53,35 @@ def _to_out(product: Product, on_hand: Decimal = Decimal("0"),
 def list_products(
     q: str | None = Query(None, description="Search SKU, name, composition or barcode"),
     category_id: int | None = None,
-    tracking_mode: str | None = None,
+    # Typed as the enum, not `str`. As a plain string an unrecognised value
+    # reached the query and Postgres rejected the comparison against the enum
+    # column, which surfaced as an anonymous 500 — the same reply the client
+    # gets when the server is genuinely broken. FastAPI now refuses it at the
+    # edge with a 422 that names the parameter and lists what it accepts, and
+    # the value appears in the OpenAPI schema so the caller need not guess.
+    tracking_mode: TrackingMode | None = None,
     is_active: bool | None = None,
     below_reorder: bool = False,
+    stock_at: int | None = Query(
+        None,
+        description=(
+            "Count stock only at this warehouse. Filters the quantities, not "
+            "the catalogue — every product still comes back, and one held "
+            "nowhere else comes back as zero."
+        ),
+    ),
     page: int = Query(1, ge=1),
     size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("product.view")),
 ) -> Page[ProductOut]:
     # Aggregate on-hand per product so the list can show stock without N+1.
+    #
+    # `stock_at` narrows the aggregate and nothing else. A transfer is picked
+    # from one branch's shelf, so "500 in the chain" is the wrong number to
+    # offer beside a source warehouse holding none — but the product still has
+    # to be findable, or a search that returns nothing reads as a missing
+    # catalogue entry rather than an empty shelf.
     stock = (
         select(
             StockBalance.product_id.label("pid"),
@@ -69,9 +89,10 @@ def list_products(
             func.sum(StockBalance.qty_reserved).label("reserved"),
         )
         .where(StockBalance.status == StockStatus.AVAILABLE)
-        .group_by(StockBalance.product_id)
-        .subquery()
     )
+    if stock_at is not None:
+        stock = stock.where(StockBalance.warehouse_id == stock_at)
+    stock = stock.group_by(StockBalance.product_id).subquery()
 
     stmt = (
         select(

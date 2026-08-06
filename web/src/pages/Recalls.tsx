@@ -176,7 +176,9 @@ export function Recalls() {
           columns={columns}
           rows={recalls.data ?? []}
           rowKey={(row) => row.id}
-          loading={recalls.isLoading}
+          loading={recalls.isPending}
+          error={recalls.error}
+          onRetry={recalls.refetch}
           emptyTitle="No recalls on record"
           emptyDescription="Batches withdrawn from circulation will be listed here."
         />

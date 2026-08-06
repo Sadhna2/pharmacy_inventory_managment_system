@@ -11,8 +11,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Archive, ArchiveRestore, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Plus, Search, X } from "lucide-react";
 import { api, qs } from "@/lib/api";
+import { useDebounced } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth";
 import { cn, money } from "@/lib/format";
 import { stateName } from "@/lib/states";
@@ -30,19 +31,33 @@ import { WarehouseForm } from "@/forms/WarehouseForm";
 type TabKey =
   | "suppliers"
   | "customers"
+  | "retail"
   | "warehouses"
   | "bins"
   | "categories"
   | "uoms";
 
+//: Institutional and retail buyers are two lists, not one filtered list.
+//: They are different in every way that matters on this screen — an
+//: institution has a GSTIN, a credit limit and a purchasing contact, a retail
+//: buyer settles at the counter and often has none of those — and they grow at
+//: completely different rates. A chain accumulates dozens of institutions and
+//: thousands of walk-ins, so one combined list buries the twenty rows anybody
+//: actually maintains under everyone who ever bought a strip of paracetamol.
 const TABS: { key: TabKey; label: string }[] = [
   { key: "suppliers", label: "Distributors" },
-  { key: "customers", label: "Customers" },
+  { key: "customers", label: "Institutions" },
+  { key: "retail", label: "Retail buyers" },
   { key: "warehouses", label: "Locations" },
   { key: "bins", label: "Bins" },
   { key: "categories", label: "Categories" },
   { key: "uoms", label: "Units" },
 ];
+
+//: Tabs whose list is long enough to be worth searching. The rest — locations,
+//: bins, categories, units — are short by nature, and a search box over eight
+//: rows is furniture.
+const SEARCHABLE: TabKey[] = ["suppliers", "customers", "retail"];
 
 /** Any master record shares just enough shape for the retire dialog. */
 interface Retirable {
@@ -83,8 +98,17 @@ export function MasterData() {
   const { can } = useAuth();
   const [params, setParams] = useSearchParams();
   const [showRetired, setShowRetired] = useState(false);
+  const [term, setTerm] = useState("");
 
-  const tab = (params.get("tab") as TabKey) || "suppliers";
+  // Checked against the real list, not cast. `?tab=` comes off the URL bar,
+  // which means it comes from anywhere — a stale bookmark, a typo, a link
+  // someone edited by hand. Casting an unknown string to TabKey satisfies the
+  // compiler and then indexes the lookup below with a key that isn't there,
+  // so `active` is undefined and reading `active.columns` throws mid-render.
+  // A bad query string should land on the default tab, not blank the app.
+  const requested = params.get("tab");
+  const tab: TabKey =
+    TABS.find((t) => t.key === requested)?.key ?? "suppliers";
   const manage = can("master.manage");
 
   // One dialog serves all three tabs; the path is built from the active one.
@@ -107,17 +131,40 @@ export function MasterData() {
     setFormOpen(true);
   };
 
-  const filter = qs({ is_active: showRetired ? undefined : true });
+  // Debounced, so typing "nursing" is one request rather than seven. The
+  // undebounced value stays in the input, so the box never lags behind the
+  // keyboard while the list catches up.
+  const search = useDebounced(term.trim(), 300);
+
+  const common = { is_active: showRetired ? undefined : true };
+  const filter = qs(common);
 
   const suppliers = useQuery({
-    queryKey: ["suppliers", { showRetired }],
-    queryFn: () => api.get<Supplier[]>(`/api/v1/suppliers${filter}`),
+    queryKey: ["suppliers", { showRetired, search }],
+    queryFn: () =>
+      api.get<Supplier[]>(`/api/v1/suppliers${qs({ ...common, q: search })}`),
     enabled: tab === "suppliers",
   });
+
+  // Two queries against one endpoint rather than one query filtered in the
+  // browser: `is_institutional` decides which list a row belongs to, and a
+  // retail list that fetched every institution to discard them would get
+  // slower for a reason nobody could see.
   const customers = useQuery({
-    queryKey: ["customers", { showRetired }],
-    queryFn: () => api.get<Customer[]>(`/api/v1/customers${filter}`),
+    queryKey: ["customers", { institutional: true, showRetired, search }],
+    queryFn: () =>
+      api.get<Customer[]>(
+        `/api/v1/customers${qs({ ...common, q: search, is_institutional: true })}`,
+      ),
     enabled: tab === "customers",
+  });
+  const retail = useQuery({
+    queryKey: ["customers", { institutional: false, showRetired, search }],
+    queryFn: () =>
+      api.get<Customer[]>(
+        `/api/v1/customers${qs({ ...common, q: search, is_institutional: false })}`,
+      ),
+    enabled: tab === "retail",
   });
   const warehouses = useQuery({
     queryKey: ["warehouses", { showRetired }],
@@ -248,22 +295,27 @@ export function MasterData() {
     ...actionsColumn<Supplier>(),
   ];
 
+  // No "Type" column: the tab already says which of the two lists this is, and
+  // a badge repeating it on every row of a list that cannot contain the other
+  // kind is a column of the same word.
   const customerColumns: Column<Customer>[] = [
     {
       key: "name",
-      header: "Customer",
+      header: tab === "retail" ? "Buyer" : "Institution",
       card: "primary",
       render: (row) => <Identity row={row} />,
     },
     {
-      key: "type",
-      header: "Type",
+      key: "phone",
+      header: "Phone",
       card: "secondary",
-      render: (row) => (
-        <Badge tone={row.is_institutional ? "info" : "neutral"}>
-          {row.is_institutional ? "Institutional" : "Retail"}
-        </Badge>
-      ),
+      hideBelow: "lg",
+      render: (row) =>
+        row.phone ? (
+          <span className="text-[13px] text-ink-soft">{row.phone}</span>
+        ) : (
+          <span className="text-ink-faint">—</span>
+        ),
     },
     {
       key: "gstin",
@@ -543,8 +595,15 @@ export function MasterData() {
     customers: {
       query: customers,
       columns: customerColumns,
-      newLabel: "New customer",
-      empty: "No customers",
+      newLabel: "New institution",
+      empty: search ? `No institution matches “${search}”` : "No institutions",
+      path: "customers",
+    },
+    retail: {
+      query: retail,
+      columns: customerColumns,
+      newLabel: "New retail buyer",
+      empty: search ? `No buyer matches “${search}”` : "No retail buyers",
       path: "customers",
     },
     warehouses: {
@@ -601,6 +660,10 @@ export function MasterData() {
               <button
                 key={t.key}
                 onClick={() => {
+                  // Cleared on the way out. Carrying it over shows the new tab
+                  // filtered by something the operator typed for the old one,
+                  // and an empty list is indistinguishable from no records.
+                  setTerm("");
                   const next = new URLSearchParams(params);
                   next.set("tab", t.key);
                   setParams(next);
@@ -618,6 +681,28 @@ export function MasterData() {
           </div>
 
           <div className="flex items-center gap-2">
+            {SEARCHABLE.includes(tab) && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint" />
+                <input
+                  value={term}
+                  onChange={(e) => setTerm(e.target.value)}
+                  placeholder="Search name or GSTIN"
+                  aria-label="Search this list"
+                  className="h-9 w-56 rounded-lg border border-line bg-surface pl-8 pr-8 text-[13px] text-ink placeholder:text-ink-faint focus:border-line-strong focus:outline-none"
+                />
+                {term && (
+                  <button
+                    onClick={() => setTerm("")}
+                    aria-label="Clear the search"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-ink-faint hover:bg-muted hover:text-ink"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
             {tab === "bins" && (
               <Select
                 value={String(binWarehouseId)}
@@ -657,39 +742,57 @@ export function MasterData() {
           columns={active.columns as Column<never>[]}
           rows={(active.query.data ?? []) as never[]}
           rowKey={(row) => (row as Retirable).id}
-          loading={active.query.isLoading}
+          loading={active.query.isPending}
+          error={active.query.error}
+          onRetry={active.query.refetch}
           emptyTitle={active.empty}
           emptyDescription="Add one to start referring to it on documents."
         />
       </Card>
 
-      <SupplierForm
-        open={formOpen && tab === "suppliers"}
-        supplier={(editing as Supplier | null) ?? null}
-        onClose={closeForm}
-      />
-      <CustomerForm
-        open={formOpen && tab === "customers"}
-        customer={(editing as Customer | null) ?? null}
-        onClose={closeForm}
-      />
-      <WarehouseForm
-        open={formOpen && tab === "warehouses"}
-        warehouse={(editing as Warehouse | null) ?? null}
-        onClose={closeForm}
-      />
-      <BinForm
-        open={formOpen && tab === "bins"}
-        bin={(editing as Bin | null) ?? null}
-        warehouseId={binWarehouseId}
-        onClose={closeForm}
-      />
-      <CategoryForm
-        open={formOpen && tab === "categories"}
-        category={(editing as Category | null) ?? null}
-        onClose={closeForm}
-      />
-      <UomForm open={formOpen && tab === "uoms"} onClose={closeForm} />
+      {/* Mounted only while open, never merely hidden. `Modal` unmounts its
+          own subtree when `open` goes false, but the form component wrapping
+          it does not go anywhere — so its useState survives being closed and
+          the next open shows the last one's contents. Conditional mounting is
+          what makes "close" mean "discard". */}
+      {formOpen && tab === "suppliers" && (
+        <SupplierForm
+          open
+          supplier={(editing as Supplier | null) ?? null}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && (tab === "customers" || tab === "retail") && (
+        <CustomerForm
+          open
+          customer={(editing as Customer | null) ?? null}
+          institutionalByDefault={tab === "customers"}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "warehouses" && (
+        <WarehouseForm
+          open
+          warehouse={(editing as Warehouse | null) ?? null}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "bins" && (
+        <BinForm
+          open
+          bin={(editing as Bin | null) ?? null}
+          warehouseId={binWarehouseId}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "categories" && (
+        <CategoryForm
+          open
+          category={(editing as Category | null) ?? null}
+          onClose={closeForm}
+        />
+      )}
+      {formOpen && tab === "uoms" && <UomForm open onClose={closeForm} />}
 
       <ConfirmDialog
         open={retiring !== null}

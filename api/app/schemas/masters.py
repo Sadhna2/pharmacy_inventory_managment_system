@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import (
     DrugSchedule,
@@ -8,6 +8,7 @@ from app.models.enums import (
     StorageCondition,
     TrackingMode,
 )
+from app.services import gst
 
 
 class CategoryOut(BaseModel):
@@ -166,6 +167,38 @@ class ProductUpdate(BaseModel):
     is_active: bool | None = None
 
 
+def check_branch_gstin(model):
+    """A branch's GSTIN must be real, and must belong to the branch's state.
+
+    Both halves matter. The checksum catches a mistyped character — GSTIN
+    carries a mod-36 check digit, so a wrong number is provably wrong rather
+    than merely unfamiliar. The prefix catches the likelier mistake: pasting
+    head office's registration into a branch in another state, which is the
+    exact confusion this column exists to end.
+
+    The state check is skipped when the state is unknown to `STATE_CODES` or
+    when only one of the two fields is being patched — refusing an edit on the
+    strength of a value not in front of us would make the field unmaintainable.
+    """
+    gstin = (model.gstin or "").strip().upper()
+    if not gstin:
+        return model
+    if not gst.gstin_is_valid(gstin):
+        raise ValueError(
+            f"{gstin!r} is not a valid GSTIN — the check digit does not match, "
+            f"so at least one character is wrong"
+        )
+    if gst.gstin_state_matches(gstin, model.state_code or "") is False:
+        expected = gst.gstin_prefix_for_state(model.state_code or "")
+        raise ValueError(
+            f"a GSTIN opens with its state's code, so a branch in "
+            f"{model.state_code} needs one starting {expected}, not "
+            f"{gstin[:2]} — a registration belongs to one state"
+        )
+    model.gstin = gstin
+    return model
+
+
 class WarehouseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -173,6 +206,7 @@ class WarehouseOut(BaseModel):
     name: str
     is_central: bool
     state_code: str
+    gstin: str | None = None
     address: str | None = None
     is_active: bool
 
@@ -183,6 +217,7 @@ class WarehouseIn(BaseModel):
             "name": "Thane Branch",
             "is_central": False,
             "state_code": "MH",
+            "gstin": "27AABCS9876P1ZA",
             "address": "Ghodbunder Road, Thane West 400607"
     }})
 
@@ -190,8 +225,11 @@ class WarehouseIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     is_central: bool = False
     state_code: str = Field(min_length=2, max_length=2)
+    gstin: str | None = None
     address: str | None = None
     is_active: bool = True
+
+    _check_gstin = model_validator(mode="after")(check_branch_gstin)
 
 
 class WarehouseUpdate(BaseModel):
@@ -206,8 +244,11 @@ class WarehouseUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     is_central: bool | None = None
     state_code: str | None = Field(None, min_length=2, max_length=2)
+    gstin: str | None = None
     address: str | None = None
     is_active: bool | None = None
+
+    _check_gstin = model_validator(mode="after")(check_branch_gstin)
 
 
 class BinOut(BaseModel):
@@ -351,6 +392,42 @@ class CustomerIn(BaseModel):
     address: str | None = None
     credit_limit: Decimal = Field(Decimal("0"), ge=0)
     is_active: bool = True
+
+
+class WalkInCustomerIn(BaseModel):
+    """A person at the counter, captured while the sale is being rung up.
+
+    Deliberately not `CustomerIn`. That schema asks for a code, and the code is
+    the one thing the person taking the order must not invent — two counters
+    inventing `CUST-005` on the same afternoon is a conflict the customer has
+    to stand and watch. The server allocates it from the same gap-free counter
+    the documents use.
+
+    A blank GSTIN is the ordinary case, not a missing field: a supply to an
+    unregistered person is a perfectly legal B2C sale and the invoice carries
+    the tax split without a recipient GSTIN. Asking for one would make the
+    common case look like an error.
+    """
+
+    model_config = ConfigDict(json_schema_extra={"example": {
+            "name": "Ramesh Kulkarni",
+            "state_code": "MH",
+    }})
+
+    name: str = Field(min_length=1, max_length=255)
+    gstin: str | None = Field(None, min_length=15, max_length=15)
+    #: Where the buyer is, which decides CGST+SGST against IGST. Left out it
+    #: becomes the branch's own state — the counter sale, and the answer that
+    #: is right nearly every time.
+    state_code: str | None = Field(None, min_length=2, max_length=2)
+    #: The only record of how to reach this buyer. An institution is on file
+    #: with an account manager and a purchase order behind it; the person at
+    #: the counter is not, so if a batch they were sold is recalled next month
+    #: these two fields are the entire means of telling them.
+    phone: str | None = Field(None, max_length=32)
+    email: str | None = Field(None, max_length=255)
+
+    _check_gstin = model_validator(mode="after")(check_branch_gstin)
 
 
 class CustomerUpdate(BaseModel):

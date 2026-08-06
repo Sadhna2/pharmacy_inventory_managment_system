@@ -30,6 +30,7 @@ export function WarehouseForm({
   const [name, setName] = useState("");
   const [isCentral, setIsCentral] = useState(false);
   const [stateCode, setStateCode] = useState("MH");
+  const [gstin, setGstin] = useState("");
   const [address, setAddress] = useState("");
 
   const submit = useSubmit(
@@ -44,11 +45,15 @@ export function WarehouseForm({
     setName(warehouse?.name ?? "");
     setIsCentral(warehouse?.is_central ?? false);
     setStateCode(warehouse?.state_code ?? "MH");
+    setGstin(warehouse?.gstin ?? "");
     setAddress(warehouse?.address ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, warehouse]);
 
   const ready = name.trim() && (editing || code.trim());
+  // A GSTIN opens with its state's numeric code, so the form can say which
+  // digits to expect rather than waiting for the server to reject the paste.
+  const gstinPrefix = STATES.find((s) => s.code === stateCode)?.gstPrefix;
   const stateChanged = editing && stateCode !== warehouse.state_code;
 
   const save = () => {
@@ -56,6 +61,7 @@ export function WarehouseForm({
       name: name.trim(),
       is_central: isCentral,
       state_code: stateCode,
+      gstin: gstin.trim() || null,
       address: address.trim() || null,
     };
     if (!editing) body.code = code.trim();
@@ -143,7 +149,37 @@ export function WarehouseForm({
               ))}
             </Select>
           </Field>
+          <Field
+            label="GSTIN"
+            error={submit.fieldErrors.gstin}
+            hint={
+              gstinPrefix
+                ? `Registration for ${stateCode} — starts ${gstinPrefix}`
+                : "This branch's own GST registration"
+            }
+          >
+            <Input
+              value={gstin}
+              onChange={(e) => setGstin(e.target.value.toUpperCase())}
+              placeholder={gstinPrefix ? `${gstinPrefix}AABCS9876P1Z_` : "15 characters"}
+            />
+          </Field>
         </FormGrid>
+
+        {/*
+          Said here rather than left to the server's refusal, because the
+          mistake is easy and the reason is not obvious: GST registers per
+          state, so a branch in another state is a separately registered
+          person. Pasting head office's number here produces a perfectly valid
+          GSTIN that belongs to somewhere else, and the invoice it prints
+          contradicts the state printed beside it.
+        */}
+        {!gstin.trim() && (
+          <p className="text-[12px] text-ink-faint">
+            Leave blank and invoices from this branch use the firm's configured
+            GSTIN. That is right for a chain trading in one state only.
+          </p>
+        )}
 
         <Field label="Address">
           <Input

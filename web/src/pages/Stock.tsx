@@ -4,7 +4,7 @@ import { Search, Undo2, X } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDebounced } from "@/lib/hooks";
-import { cn, date, money, num, qty, relativeDays } from "@/lib/format";
+import { clock, cn, date, money, num, qty, relativeDays } from "@/lib/format";
 import type { Balance, Movement, Page, Warehouse } from "@/lib/types";
 import { PageHeader } from "@/components/Shell";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -76,7 +76,7 @@ export function Stock() {
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["balances", { warehouse, status, q, expiry, expiryBefore, page }],
     queryFn: () =>
       api.get<Page<Balance>>(
@@ -314,7 +314,9 @@ export function Stock() {
           rowKey={(row) =>
             `${row.product_id}-${row.warehouse_id}-${row.bin_id}-${row.lot_id}-${row.status}`
           }
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}
@@ -340,7 +342,7 @@ export function Movements() {
   const [page, setPage] = useState(1);
   const [reversing, setReversing] = useState<Movement | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["movements", page],
     queryFn: () =>
       api.get<Page<Movement>>(
@@ -407,12 +409,32 @@ export function Movements() {
       header: "When",
       hideBelow: "md",
       card: "secondary",
+      // Day and month only, with no year and no clock, on the one screen that
+      // is nothing but a chronological list. Two postings a minute apart were
+      // indistinguishable, and two years of history all read as the same day.
       render: (row) => (
-        <span className="text-[13px] text-ink-soft">
-          {new Date(row.occurred_at).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-          })}
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[13px] text-ink-soft">
+            {date(row.occurred_at)}
+          </p>
+          <p className="truncate text-[11px] text-ink-faint tnum">
+            {clock(row.occurred_at)}
+          </p>
+        </div>
+      ),
+    },
+    {
+      // The ledger has always recorded who posted each line, and the endpoint
+      // has always returned the name — the column was simply missing, so the
+      // one screen where "who did this?" is the whole question could not
+      // answer it.
+      key: "who",
+      header: "Posted by",
+      hideBelow: "xl",
+      card: "secondary",
+      render: (row) => (
+        <span className="truncate text-[13px] text-ink-soft">
+          {row.created_by_name ?? "—"}
         </span>
       ),
     },
@@ -474,7 +496,9 @@ export function Movements() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}

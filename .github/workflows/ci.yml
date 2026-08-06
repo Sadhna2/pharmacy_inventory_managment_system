@@ -8,13 +8,32 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # No `push: branches: [main]` any more. Deploy triggers on that push and now
+  # calls this workflow as its gate, so leaving the direct trigger in place ran
+  # the entire suite twice for every merge — same commit, same result, twice
+  # the minutes — and put two CI results on one commit for no reason.
+  #
+  # Callable, so Deploy can run this as its own first job rather than racing
+  # it. Both workflows used to trigger on a push to main and run side by side,
+  # with deploy waiting only on `build` — so a commit whose tests failed still
+  # reached the server, and all you got was a red X beside a live deployment.
+  #
+  # Called rather than chained off a `workflow_run` trigger, because under
+  # `workflow_run` the `github.sha` a job sees is the branch head at the time
+  # the event fired, not the commit CI actually tested. On a busy branch that
+  # deploys something nobody ran the suite against — which is the exact failure
+  # this is meant to prevent, arrived at by a different route.
+  workflow_call:
 
 # A second push to the same PR cancels the first — no point testing a commit
 # that has already been superseded.
+#
+# `github.workflow` is in the key so a called run does not cancel a direct one.
+# Without it the push to main starts CI, Deploy calls CI again for the same
+# ref, the two share a group, and one cancels the other — leaving either a
+# deploy blocked on a cancelled gate or a commit with no CI result at all.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

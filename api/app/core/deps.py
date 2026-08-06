@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import AuthenticationError, NotFoundError, PermissionDenied
-from app.core.permissions import ADMIN, MANAGER
+from app.core.permissions import ADMIN, CUSTOMER, MANAGER
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.identity import Role, RolePermission, User
@@ -93,12 +93,36 @@ def scoped_warehouse_ids(user: User) -> list[int] | None:
     """Which warehouses this user may see. None means all of them.
 
     Staff are pinned to their branch; managers and admins see the whole chain.
+
+    A CUSTOMER is deliberately not scoped here — they are not a branch user at
+    all. They buy from whichever branch holds the stock, so pinning them to one
+    is meaningless, and pinning them to none showed them nothing. Their limit
+    is `scoped_customer_id` below, and callers that can be reached by a
+    customer must apply both.
     """
     if user.role.code in (ADMIN, MANAGER):
+        return None
+    if user.role.code == CUSTOMER:
         return None
     if user.warehouse_id is None:
         return []
     return [user.warehouse_id]
+
+
+def scoped_customer_id(user: User) -> int | None:
+    """Which buyer this user is limited to. None means no such limit.
+
+    None for every internal role, so an existing warehouse-scoped query is
+    unaffected by adding this alongside it. For a CUSTOMER it is the buyer the
+    account speaks for — and if that link is missing the account is refused
+    everything rather than shown everyone: an unlinked customer login is a
+    misconfiguration, and the safe reading of a misconfiguration is zero, not
+    all. `-1` matches no row, which is how that refusal is expressed in a
+    WHERE clause without a special case at every call site.
+    """
+    if user.role.code != CUSTOMER:
+        return None
+    return user.customer_id if user.customer_id is not None else -1
 
 
 def get_request_context(request: Request) -> dict[str, str | None]:

@@ -70,6 +70,8 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from app.services import gst
+
 # Money is compared to the paise. The generator and every real invoice round
 # line values to two places, so anything looser would wave through a genuine
 # transposition, and anything tighter would trip on the rounding itself.
@@ -150,8 +152,12 @@ HSN_GST_RATES: Mapping[str, frozenset[int]] = {
 
 #: The 36-character alphabet GSTIN check digits are computed over: digits then
 #: letters, value equal to index.
-_GSTIN_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-_GSTIN_SHAPE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
+# Re-exported: a GSTIN is a GST fact, not a scanner fact, and warehouses now
+# check one too. `gst` owns the shape and the checksum; this module keeps the
+# names it has always used so its callers and tests are unaffected.
+_GSTIN_SHAPE = gst.GSTIN_SHAPE
+gstin_check_digit = gst.gstin_check_digit
+gstin_is_valid = gst.gstin_is_valid
 
 #: Character pairs an OCR system confuses, in both directions. Printed batch
 #: numbers are the worst case for this: no dictionary to fall back on, and a
@@ -328,31 +334,6 @@ def _confusable_candidates(code: str, known: set[str]) -> str | None:
         found.add(upper[:-1])
 
     return found.pop() if len(found) == 1 else None
-
-
-def gstin_check_digit(first_fourteen: str) -> str | None:
-    """The fifteenth character of a GSTIN, computed from the first fourteen.
-
-    GSTIN carries a mod-36 checksum, which makes it one of the few fields on
-    the page that can be verified outright rather than merely looked plausible.
-    Weights alternate 1, 2 across the payload; each product is folded by
-    quotient plus remainder over 36.
-    """
-    payload = first_fourteen.upper()
-    if len(payload) != 14 or any(c not in _GSTIN_ALPHABET for c in payload):
-        return None
-    total = 0
-    for i, ch in enumerate(payload):
-        product = _GSTIN_ALPHABET.index(ch) * (1 if i % 2 == 0 else 2)
-        total += product // 36 + product % 36
-    return _GSTIN_ALPHABET[(36 - total % 36) % 36]
-
-
-def gstin_is_valid(gstin: str) -> bool:
-    code = (gstin or "").strip().upper()
-    if not _GSTIN_SHAPE.match(code):
-        return False
-    return gstin_check_digit(code[:14]) == code[14]
 
 
 # ---------------------------------------------------------------------- header

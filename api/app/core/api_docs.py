@@ -131,6 +131,18 @@ USED_BY: dict[str, tuple[str, str]] = {
         "One order with its lines, used to prefill a goods receipt with what "
         "the delivery is expected to contain.",
     ),
+    "PUT /api/v1/purchase-orders/{po_id}/invoice": (
+        "Operations → Purchasing → New order",
+        "Keeps the distributor's invoice against the order it raised. One per "
+        "order — uploading again replaces it, because a second scan of the "
+        "same delivery is a correction rather than a second document.",
+    ),
+    "GET /api/v1/purchase-orders/{po_id}/invoice": (
+        "Operations → Purchasing → Receive goods",
+        "Hands back the stored invoice as it was uploaded, named for the "
+        "order. Offered on the receiving screen when the order carries one, "
+        "so the cartons can be checked against the paper they came with.",
+    ),
     "POST /api/v1/purchase-orders/{po_id}/submit": (
         "Operations → Purchasing → Submit",
         "Moves a DRAFT to PENDING_APPROVAL.",
@@ -175,9 +187,36 @@ USED_BY: dict[str, tuple[str, str]] = {
         "Raises an order. Nothing leaves stock yet — allocation is a separate, "
         "deliberate step.",
     ),
+    "GET /api/v1/sales-orders/suggested-price": (
+        "Operations → Sales → New order",
+        "The price this customer was last charged for this product, falling "
+        "back to MRP. Fills the price box so an institutional buyer is not "
+        "quietly invoiced at list price.",
+    ),
+    "POST /api/v1/sales-orders/plan": (
+        "Operations → Sales → New order",
+        "Given a customer and the products they want, works out which branches "
+        "could supply them and proposes one ordinary order per branch. Writes "
+        "nothing and reserves nothing — each proposed order is still raised "
+        "through POST /sales-orders.",
+    ),
     "GET /api/v1/sales-orders/{so_id}": (
         "Operations → Sales → row",
         "One order with its lines, allocations and shipments.",
+    ),
+    "GET /api/v1/sales-orders/{so_id}/invoice": (
+        "Operations → Sales → Print invoice",
+        "The order rendered as a GST tax invoice: the line table, the HSN-wise "
+        "summary the statute asks for at the foot, and the grand total spelled "
+        "out in lakh and crore rather than millions. Which tax columns appear "
+        "is decided once from the document's own interstate flag — IGST, or "
+        "CGST+SGST — never per line, because a zero-rated line would otherwise "
+        "flip the table halfway down. Every HSN printed is the one frozen onto "
+        "the line when the order was priced, so a reprint still matches the "
+        "copy the customer holds after the catalogue has been corrected. "
+        "Returns HTML, not a PDF: every browser already paginates a long table "
+        "for printing better than a server-side renderer would, and it saves a "
+        "native dependency on a 2 GB box.",
     ),
     "POST /api/v1/sales-orders/{so_id}/allocate": (
         "Operations → Sales → Allocate",
@@ -216,6 +255,15 @@ USED_BY: dict[str, tuple[str, str]] = {
         "lost if one person does both, but it is an inconsistency worth "
         "knowing about rather than assuming.",
     ),
+    "POST /api/v1/transfers/{transfer_id}/cancel": (
+        "Operations \u2192 Transfers \u2192 row menu \u2192 Cancel transfer",
+        "Abandons a transfer that has not shipped, so a document that cannot "
+        "be dispatched can leave the list. Draft, pending and approved can be "
+        "cancelled; once IN_TRANSIT the goods are on a road and the answer is "
+        "to receive them and transfer them back, which leaves both movements "
+        "in the ledger. Posts nothing \u2014 a transfer holds no stock before "
+        "dispatch.",
+    ),
     "POST /api/v1/transfers/{transfer_id}/dispatch": (
         "Operations → Transfers → Dispatch",
         "Posts stock out of the source into IN_TRANSIT. Deliberately two "
@@ -241,6 +289,14 @@ USED_BY: dict[str, tuple[str, str]] = {
     "POST /api/v1/adjustments/{adjustment_id}/approve": (
         "Operations → Adjustments → Approve",
         "Approves and posts the ledger entries. Refuses self-approval.",
+    ),
+    "POST /api/v1/adjustments/{adjustment_id}/cancel": (
+        "Operations → Adjustments → row menu → Cancel adjustment",
+        "Withdraws an adjustment that has not posted, so a document the "
+        "approver will not pass can leave the queue. Only PENDING_APPROVAL "
+        "can be cancelled — once approved the entry is in the ledger, which "
+        "is corrected by a reversing movement and never by editing. The "
+        "raiser may cancel their own: withdrawing a document moves no stock.",
     ),
     # -------------------------------------------------------- analysis: AI
     "GET /api/v1/ai/forecast": (
@@ -381,15 +437,27 @@ USED_BY: dict[str, tuple[str, str]] = {
         "cannot be removed without orphaning that history.",
     ),
     "GET /api/v1/customers": (
-        "Setup → Master data → Customers; picker in Sales",
-        "Institutional buyers — hospitals and clinics — with the GSTIN and "
-        "state code that decide the GST split on their orders.",
+        "Setup → Master data → Institutions and Retail buyers; picker in Sales",
+        "Buyers with the GSTIN and state code that decide the GST split on "
+        "their orders. `is_institutional` separates hospitals and clinics from "
+        "counter trade — the two are kept as separate lists because they grow "
+        "at very different rates. `q` searches name, code and GSTIN.",
     ),
     "POST /api/v1/customers": (
         "Setup → Master data → New customer",
         "Creates a customer. GSTIN is optional, since not every institutional "
         "buyer is registered; the state code is not, because the GST split on "
         "their orders depends on it.",
+    ),
+    "POST /api/v1/customers/walk-in": (
+        "Operations → Sales → New order → Walk-in customer",
+        "Names the person at the counter without leaving the order. The code "
+        "Phone and email are optional but asked for, because a counter buyer "
+        "is the party with no other record behind them and these are the only "
+        "way to reach them if a batch is recalled. The code "
+        "is allocated by the server rather than asked for, and the state — "
+        "which decides CGST+SGST against IGST — defaults to the branch. "
+        "Guarded by so.create, because this is part of ringing up a sale.",
     ),
     "PATCH /api/v1/customers/{customer_id}": (
         "Setup → Master data → Edit customer",

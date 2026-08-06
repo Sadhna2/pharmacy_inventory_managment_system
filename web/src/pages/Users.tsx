@@ -166,7 +166,7 @@ export function Users() {
     queryFn: () => api.get<Warehouse[]>("/api/v1/warehouses"),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: ["users", { q, roleId, warehouseId, showInactive, page }],
     queryFn: () =>
       api.get<Page<ManagedUser>>(
@@ -382,7 +382,9 @@ export function Users() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.id}
-          loading={isLoading}
+          loading={isPending}
+          error={error}
+          onRetry={refetch}
           page={data?.page}
           pages={data?.pages}
           total={data?.total}

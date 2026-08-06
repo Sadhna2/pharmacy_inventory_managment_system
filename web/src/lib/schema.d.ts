@@ -551,9 +551,9 @@ export interface paths {
          * List Customers
          * @description ---
          *
-         *     **Used by:** Setup → Master data → Customers; picker in Sales
+         *     **Used by:** Setup → Master data → Institutions and Retail buyers; picker in Sales
          *
-         *     Institutional buyers — hospitals and clinics — with the GSTIN and state code that decide the GST split on their orders.
+         *     Buyers with the GSTIN and state code that decide the GST split on their orders. `is_institutional` separates hospitals and clinics from counter trade — the two are kept as separate lists because they grow at very different rates. `q` searches name, code and GSTIN.
          */
         get: operations["list_customers_api_v1_customers_get"];
         put?: never;
@@ -566,6 +566,42 @@ export interface paths {
          *     Creates a customer. GSTIN is optional, since not every institutional buyer is registered; the state code is not, because the GST split on their orders depends on it.
          */
         post: operations["create_customer_api_v1_customers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/walk-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Walk In Customer
+         * @description Capture the person at the counter without leaving the sales order.
+         *
+         *     Guarded by `so.create` rather than `master.manage`, because this is part of
+         *     ringing up a sale rather than an act of master-data administration. Whoever
+         *     may raise the order may name the buyer on it; anything more — a credit
+         *     limit, an address, retiring the record — still needs the master data screen.
+         *
+         *     The record is a real customer, so the sale has a real counterparty on it
+         *     and the same person coming back next month is found by name rather than
+         *     entered twice. What it is not is institutional: no credit limit, so the
+         *     order is settled at the counter, which is what a walk-in is.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → New order → Walk-in customer
+         *
+         *     Names the person at the counter without leaving the order. The code Phone and email are optional but asked for, because a counter buyer is the party with no other record behind them and these are the only way to reach them if a batch is recalled. The code is allocated by the server rather than asked for, and the state — which decides CGST+SGST against IGST — defaults to the branch. Guarded by so.create, because this is part of ringing up a sale.
+         */
+        post: operations["create_walk_in_customer_api_v1_customers_walk_in_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -902,6 +938,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/purchase-orders/{po_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Po Invoice
+         * @description Hand back the file exactly as it was uploaded.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → Receive goods
+         *
+         *     Hands back the stored invoice as it was uploaded, named for the order. Offered on the receiving screen when the order carries one, so the cartons can be checked against the paper they came with.
+         */
+        get: operations["download_po_invoice_api_v1_purchase_orders__po_id__invoice_get"];
+        /**
+         * Store Po Invoice
+         * @description Keep the invoice the order was raised from.
+         *
+         *     PUT rather than POST because there is one per order: uploading again
+         *     replaces it. A second scan of the same delivery is a correction, and two
+         *     files against one order would leave whoever opens it later choosing
+         *     between them with nothing to choose on.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Purchasing → New order
+         *
+         *     Keeps the distributor's invoice against the order it raised. One per order — uploading again replaces it, because a second scan of the same delivery is a correction rather than a second document.
+         */
+        put: operations["store_po_invoice_api_v1_purchase_orders__po_id__invoice_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/goods-receipts": {
         parameters: {
             query?: never;
@@ -968,6 +1045,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sales-orders/suggested-price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggested Price
+         * @description The price to offer for this customer and product, before anyone types.
+         *
+         *     Declared above `/{so_id}` because FastAPI matches in order and would
+         *     otherwise try to read "suggested-price" as an order id.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → New order
+         *
+         *     The price this customer was last charged for this product, falling back to MRP. Fills the price box so an institutional buyer is not quietly invoiced at list price.
+         */
+        get: operations["suggested_price_api_v1_sales_orders_suggested_price_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales-orders/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Sales Order
+         * @description Which branches, together, could supply this — before anything is raised.
+         *
+         *     A POST because it carries a body, not because it changes anything: this
+         *     writes nothing, reserves nothing, and holds no stock. Between reading a
+         *     plan and acting on it the shelf can move, so each order it proposes is
+         *     still raised through `POST /sales-orders` and still met by every check
+         *     that route already applies.
+         *
+         *     `so.create` rather than `so.view`. It answers a question only somebody
+         *     about to raise an order needs answered, and it reports stock levels across
+         *     every branch the caller can see — a thinner permission would make it a way
+         *     to read the chain's stock position sideways.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → New order
+         *
+         *     Given a customer and the products they want, works out which branches could supply them and proposes one ordinary order per branch. Writes nothing and reserves nothing — each proposed order is still raised through POST /sales-orders.
+         */
+        post: operations["plan_sales_order_api_v1_sales_orders_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sales-orders/{so_id}": {
         parameters: {
             query?: never;
@@ -984,6 +1127,32 @@ export interface paths {
          *     One order with its lines, allocations and shipments.
          */
         get: operations["get_sales_order_api_v1_sales_orders__so_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sales-orders/{so_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales Order Invoice
+         * @description The order as a print-ready GST tax invoice, for the browser to print.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Sales → Print invoice
+         *
+         *     The order rendered as a GST tax invoice: the line table, the HSN-wise summary the statute asks for at the foot, and the grand total spelled out in lakh and crore rather than millions. Which tax columns appear is decided once from the document's own interstate flag — IGST, or CGST+SGST — never per line, because a zero-rated line would otherwise flip the table halfway down. Every HSN printed is the one frozen onto the line when the order was priced, so a reprint still matches the copy the customer holds after the catalogue has been corrected. Returns HTML, not a PDF: every browser already paginates a long table for printing better than a server-side renderer would, and it saves a native dependency on a 2 GB box.
+         */
+        get: operations["sales_order_invoice_api_v1_sales_orders__so_id__invoice_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1126,6 +1295,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transfers/{transfer_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Transfer
+         * @description Abandon a transfer before it ships.
+         *
+         *     Gated on `transfer.create` rather than `transfer.approve`: abandoning a
+         *     document moves no stock, so the branch that raised it can take it back
+         *     without finding a second person to agree.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Transfers → row menu → Cancel transfer
+         *
+         *     Abandons a transfer that has not shipped, so a document that cannot be dispatched can leave the list. Draft, pending and approved can be cancelled; once IN_TRANSIT the goods are on a road and the answer is to receive them and transfer them back, which leaves both movements in the ledger. Posts nothing — a transfer holds no stock before dispatch.
+         */
+        post: operations["cancel_transfer_api_v1_transfers__transfer_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transfers/{transfer_id}/dispatch": {
         parameters: {
             query?: never;
@@ -1232,6 +1431,36 @@ export interface paths {
          *     Approves and posts the ledger entries. Refuses self-approval.
          */
         post: operations["approve_adjustment_api_v1_adjustments__adjustment_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adjustments/{adjustment_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Adjustment
+         * @description Withdraw an adjustment before it posts.
+         *
+         *     Gated on `stock.adjust` rather than `adjustment.approve`: withdrawing a
+         *     document moves no stock, so the raiser is entitled to take back their own
+         *     mistake without finding a second person to agree.
+         *
+         *     ---
+         *
+         *     **Used by:** Operations → Adjustments → row menu → Cancel adjustment
+         *
+         *     Withdraws an adjustment that has not posted, so a document the approver will not pass can leave the queue. Only PENDING_APPROVAL can be cancelled — once approved the entry is in the ledger, which is corrected by a reversing movement and never by editing. The raiser may cancel their own: withdrawing a document moves no stock.
+         */
+        post: operations["cancel_adjustment_api_v1_adjustments__adjustment_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1947,10 +2176,19 @@ export interface components {
             /** Reason Code */
             reason_code: string;
             status: components["schemas"]["DocumentStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Created By */
             created_by: number;
+            /** Created By Name */
+            created_by_name?: string | null;
             /** Approved By */
             approved_by?: number | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -1980,6 +2218,29 @@ export interface components {
             quantity: string;
             /** Mrp */
             mrp?: string | null;
+        };
+        /**
+         * AlternativeOut
+         * @description Another branch that could take this order's lines in full instead.
+         *
+         *     Its own split and total, because shipping the same lines from another
+         *     state turns CGST + SGST into IGST.
+         */
+        AlternativeOut: {
+            /** Warehouse Id */
+            warehouse_id: number;
+            /** Warehouse Name */
+            warehouse_name: string;
+            /** State Code */
+            state_code: string;
+            /** Is Interstate */
+            is_interstate: boolean;
+            /** Subtotal */
+            subtotal: string;
+            /** Tax Total */
+            tax_total: string;
+            /** Grand Total */
+            grand_total: string;
         };
         /** AnomalyOut */
         AnomalyOut: {
@@ -2236,6 +2497,14 @@ export interface components {
             supplier_id?: number | null;
             /** Purchase Order Id */
             purchase_order_id?: number | null;
+        };
+        /** Body_store_po_invoice_api_v1_purchase_orders__po_id__invoice_put */
+        Body_store_po_invoice_api_v1_purchase_orders__po_id__invoice_put: {
+            /**
+             * File
+             * @description The distributor's invoice
+             */
+            file: string;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -2777,6 +3046,8 @@ export interface components {
             received_at: string;
             /** Received By */
             received_by: number;
+            /** Received By Name */
+            received_by_name?: string | null;
             /** Notes */
             notes?: string | null;
             /**
@@ -3164,6 +3435,8 @@ export interface components {
             qty_received: string;
             /** Unit Price */
             unit_price: string;
+            /** Hsn Code */
+            hsn_code?: string | null;
         };
         /** Page[AdjustmentOut] */
         Page_AdjustmentOut_: {
@@ -3304,6 +3577,46 @@ export interface components {
         PasswordReset: {
             /** New Password */
             new_password: string;
+        };
+        /** PlannedLineOut */
+        PlannedLineOut: {
+            /** Product Id */
+            product_id: number;
+            /** Product Name */
+            product_name: string;
+            /** Sku */
+            sku: string;
+            /** Quantity */
+            quantity: string;
+            /** Unit Price */
+            unit_price: string;
+        };
+        /**
+         * PlannedOrderOut
+         * @description One branch's share — everything `POST /sales-orders` needs to raise it.
+         */
+        PlannedOrderOut: {
+            /** Warehouse Id */
+            warehouse_id: number;
+            /** Warehouse Name */
+            warehouse_name: string;
+            /** State Code */
+            state_code: string;
+            /** Is Interstate */
+            is_interstate: boolean;
+            /** Lines */
+            lines: components["schemas"]["PlannedLineOut"][];
+            /** Subtotal */
+            subtotal: string;
+            /** Tax Total */
+            tax_total: string;
+            /** Grand Total */
+            grand_total: string;
+            /**
+             * Alternatives
+             * @default []
+             */
+            alternatives: components["schemas"]["AlternativeOut"][];
         };
         /**
          * ProductIn
@@ -3541,16 +3854,30 @@ export interface components {
              * Format: date
              */
             order_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Expected Date */
             expected_date?: string | null;
             /** Notes */
             notes?: string | null;
             /** Created By */
             created_by: number;
+            /** Created By Name */
+            created_by_name?: string | null;
             /** Approved By */
             approved_by?: number | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
             /** Approved At */
             approved_at?: string | null;
+            /**
+             * Has Invoice
+             * @default false
+             */
+            has_invoice: boolean;
             /**
              * Lines
              * @default []
@@ -3865,6 +4192,8 @@ export interface components {
             qty_shipped: string;
             /** Unit Price */
             unit_price: string;
+            /** Hsn Code */
+            hsn_code?: string | null;
         };
         /**
          * SalesOrderIn
@@ -3928,6 +4257,11 @@ export interface components {
              * Format: date
              */
             order_date: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Notes */
             notes?: string | null;
             /**
@@ -3935,6 +4269,39 @@ export interface components {
              * @default []
              */
             lines: components["schemas"]["SOLineOut"][];
+        };
+        /**
+         * SalesOrderPlanIn
+         * @description A request to be planned, with no warehouse named — that is the answer.
+         * @example {
+         *       "customer_id": 1,
+         *       "lines": [
+         *         {
+         *           "product_id": 4,
+         *           "qty_ordered": 500
+         *         },
+         *         {
+         *           "product_id": 6,
+         *           "qty_ordered": 200
+         *         }
+         *       ]
+         *     }
+         */
+        SalesOrderPlanIn: {
+            /** Customer Id */
+            customer_id: number;
+            /** Lines */
+            lines: components["schemas"]["SOLineIn"][];
+        };
+        /**
+         * SalesOrderPlanOut
+         * @description Nothing here has been written. Each order still has to be raised.
+         */
+        SalesOrderPlanOut: {
+            /** Orders */
+            orders: components["schemas"]["PlannedOrderOut"][];
+            /** Shortfalls */
+            shortfalls: components["schemas"]["ShortfallOut"][];
         };
         /** SettingsGroupOut */
         SettingsGroupOut: {
@@ -3996,6 +4363,20 @@ export interface components {
              * @default []
              */
             lines: components["schemas"]["AllocationOut"][];
+        };
+        /**
+         * ShortfallOut
+         * @description What the chain cannot cover, said plainly rather than left implicit.
+         */
+        ShortfallOut: {
+            /** Product Id */
+            product_id: number;
+            /** Product Name */
+            product_name: string;
+            /** Requested */
+            requested: string;
+            /** Planned */
+            planned: string;
         };
         /** SourcingOut */
         SourcingOut: {
@@ -4077,6 +4458,27 @@ export interface components {
          * @enum {string}
          */
         StorageCondition: "AMBIENT" | "COOL" | "COLD_CHAIN" | "FROZEN";
+        /**
+         * SuggestedPriceOut
+         * @description What to put in the price box before anyone types, and where it came from.
+         *
+         *     `source` is part of the answer, not decoration: "the price you charged them
+         *     last time" and "the list price we have never sold at" deserve different
+         *     amounts of trust from whoever is about to accept the number.
+         */
+        SuggestedPriceOut: {
+            /** Product Id */
+            product_id: number;
+            /** Unit Price */
+            unit_price: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "last_charged" | "mrp" | "none";
+            /** Last Charged On */
+            last_charged_on?: string | null;
+        };
         /** SupplierDeliveryOut */
         SupplierDeliveryOut: {
             /** Po Id */
@@ -4224,6 +4626,20 @@ export interface components {
          */
         TrackingMode: "NONE" | "LOT" | "LOT_EXPIRY" | "SERIAL";
         /**
+         * TransferBatchOut
+         * @description A batch that actually left, and how much of it.
+         */
+        TransferBatchOut: {
+            /** Lot Id */
+            lot_id?: number | null;
+            /** Lot Code */
+            lot_code?: string | null;
+            /** Expiry Date */
+            expiry_date?: string | null;
+            /** Quantity */
+            quantity: string;
+        };
+        /**
          * TransferIn
          * @example {
          *       "from_warehouse_id": 1,
@@ -4280,6 +4696,11 @@ export interface components {
             quantity: string;
             /** Qty Received */
             qty_received: string;
+            /**
+             * Batches
+             * @default []
+             */
+            batches: components["schemas"]["TransferBatchOut"][];
         };
         /** TransferOut */
         TransferOut: {
@@ -4296,6 +4717,19 @@ export interface components {
             /** To Warehouse Name */
             to_warehouse_name?: string | null;
             status: components["schemas"]["DocumentStatus"];
+            /** Created By */
+            created_by: number;
+            /** Created By Name */
+            created_by_name?: string | null;
+            /** Approved By */
+            approved_by?: number | null;
+            /** Approved By Name */
+            approved_by_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
             /** Dispatched At */
             dispatched_at?: string | null;
             /** Received At */
@@ -4486,10 +4920,42 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * WalkInCustomerIn
+         * @description A person at the counter, captured while the sale is being rung up.
+         *
+         *     Deliberately not `CustomerIn`. That schema asks for a code, and the code is
+         *     the one thing the person taking the order must not invent — two counters
+         *     inventing `CUST-005` on the same afternoon is a conflict the customer has
+         *     to stand and watch. The server allocates it from the same gap-free counter
+         *     the documents use.
+         *
+         *     A blank GSTIN is the ordinary case, not a missing field: a supply to an
+         *     unregistered person is a perfectly legal B2C sale and the invoice carries
+         *     the tax split without a recipient GSTIN. Asking for one would make the
+         *     common case look like an error.
+         * @example {
+         *       "name": "Ramesh Kulkarni",
+         *       "state_code": "MH"
+         *     }
+         */
+        WalkInCustomerIn: {
+            /** Name */
+            name: string;
+            /** Gstin */
+            gstin?: string | null;
+            /** State Code */
+            state_code?: string | null;
+            /** Phone */
+            phone?: string | null;
+            /** Email */
+            email?: string | null;
+        };
+        /**
          * WarehouseIn
          * @example {
          *       "address": "Ghodbunder Road, Thane West 400607",
          *       "code": "BR-THN",
+         *       "gstin": "27AABCS9876P1ZA",
          *       "is_central": false,
          *       "name": "Thane Branch",
          *       "state_code": "MH"
@@ -4507,6 +4973,8 @@ export interface components {
             is_central: boolean;
             /** State Code */
             state_code: string;
+            /** Gstin */
+            gstin?: string | null;
             /** Address */
             address?: string | null;
             /**
@@ -4527,6 +4995,8 @@ export interface components {
             is_central: boolean;
             /** State Code */
             state_code: string;
+            /** Gstin */
+            gstin?: string | null;
             /** Address */
             address?: string | null;
             /** Is Active */
@@ -4546,6 +5016,8 @@ export interface components {
             is_central?: boolean | null;
             /** State Code */
             state_code?: string | null;
+            /** Gstin */
+            gstin?: string | null;
             /** Address */
             address?: string | null;
             /** Is Active */
@@ -4736,9 +5208,11 @@ export interface operations {
                 /** @description Search SKU, name, composition or barcode */
                 q?: string | null;
                 category_id?: number | null;
-                tracking_mode?: string | null;
+                tracking_mode?: components["schemas"]["TrackingMode"] | null;
                 is_active?: boolean | null;
                 below_reorder?: boolean;
+                /** @description Count stock only at this warehouse. Filters the quantities, not the catalogue — every product still comes back, and one held nowhere else comes back as zero. */
+                stock_at?: number | null;
                 page?: number;
                 size?: number;
             };
@@ -5348,6 +5822,8 @@ export interface operations {
     list_suppliers_api_v1_suppliers_get: {
         parameters: {
             query?: {
+                /** @description Search name, code or GSTIN */
+                q?: string | null;
                 is_active?: boolean | null;
             };
             header?: never;
@@ -5478,6 +5954,8 @@ export interface operations {
     list_customers_api_v1_customers_get: {
         parameters: {
             query?: {
+                /** @description Search name, code or GSTIN */
+                q?: string | null;
                 is_institutional?: boolean | null;
                 is_active?: boolean | null;
             };
@@ -5517,6 +5995,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CustomerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_walk_in_customer_api_v1_customers_walk_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalkInCustomerIn"];
             };
         };
         responses: {
@@ -6072,6 +6583,72 @@ export interface operations {
             };
         };
     };
+    download_po_invoice_api_v1_purchase_orders__po_id__invoice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    store_po_invoice_api_v1_purchase_orders__po_id__invoice_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_store_po_invoice_api_v1_purchase_orders__po_id__invoice_put"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_receipts_api_v1_goods_receipts_get: {
         parameters: {
             query?: {
@@ -6203,6 +6780,71 @@ export interface operations {
             };
         };
     };
+    suggested_price_api_v1_sales_orders_suggested_price_get: {
+        parameters: {
+            query: {
+                customer_id: number;
+                product_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestedPriceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_sales_order_api_v1_sales_orders_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesOrderPlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesOrderPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_sales_order_api_v1_sales_orders__so_id__get: {
         parameters: {
             query?: never;
@@ -6221,6 +6863,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SalesOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sales_order_invoice_api_v1_sales_orders__so_id__invoice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                so_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */
@@ -6424,6 +7097,37 @@ export interface operations {
             };
         };
     };
+    cancel_transfer_api_v1_transfers__transfer_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                transfer_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     dispatch_transfer_api_v1_transfers__transfer_id__dispatch_post: {
         parameters: {
             query?: never;
@@ -6553,6 +7257,37 @@ export interface operations {
         };
     };
     approve_adjustment_api_v1_adjustments__adjustment_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                adjustment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdjustmentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_adjustment_api_v1_adjustments__adjustment_id__cancel_post: {
         parameters: {
             query?: never;
             header?: never;

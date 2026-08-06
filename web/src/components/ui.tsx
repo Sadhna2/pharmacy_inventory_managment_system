@@ -15,7 +15,8 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2, Lock, TriangleAlert, X } from "lucide-react";
+import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/format";
 
 /* ------------------------------------------------------------------ Button */
@@ -285,6 +286,16 @@ export function Modal({
     };
   }, [open, onClose]);
 
+  // Unmounts the dialog, but NOT the component that rendered it. A form
+  // holding draft state keeps that state in its own body, above this call, so
+  // closing hides the dialog and preserves everything typed into it — reopen
+  // and the last attempt is still there. Scanning an invoice, going back, and
+  // opening the scanner again showed the previous scan's lines.
+  //
+  // Nothing here can fix that: by the time this runs, the state belongs to a
+  // component further up. So a form with draft state is mounted conditionally
+  // by its caller — `{open && <Form open … />}` — and closing it discards the
+  // draft because the component goes away.
   if (!open) return null;
 
   return (
@@ -363,12 +374,54 @@ export function EmptyState({
   );
 }
 
-export function ErrorState({ error }: { error: unknown }) {
-  const message =
-    error instanceof Error ? error.message : "Something went wrong";
+/**
+ * What a screen shows when its data did not arrive.
+ *
+ * The distinction this draws is the whole point of it. A list that failed and
+ * a list that is genuinely empty look identical if both render "Nothing here"
+ * — and "Nothing here" is a factual claim about the business. A branch manager
+ * told "No movements yet" by a screen that actually got a 500 will act on it.
+ *
+ * 403 is separated out because it is not a fault: the answer is "not yours to
+ * see", and offering a Try again button for it invites someone to sit there
+ * clicking at a wall.
+ */
+export function ErrorState({
+  error,
+  onRetry,
+}: {
+  error: unknown;
+  onRetry?: () => void;
+}) {
+  const status = error instanceof ApiError ? error.status : undefined;
+  const refused = status === 403;
+
+  const title = refused
+    ? "You do not have access to this"
+    : "This could not be loaded";
+  const detail = refused
+    ? "Ask an administrator if you need it — your role does not include it today."
+    : error instanceof Error
+      ? error.message
+      : "Something went wrong fetching this.";
+
   return (
-    <div className="m-4 rounded-lg border border-danger/20 bg-danger-soft px-4 py-3">
-      <p className="text-sm font-medium text-danger">{message}</p>
+    <div className="flex flex-col items-center justify-center px-6 py-14 text-center">
+      <div className="mb-3 rounded-full bg-danger-soft p-3">
+        {refused ? (
+          <Lock className="size-5 text-danger" />
+        ) : (
+          <TriangleAlert className="size-5 text-danger" />
+        )}
+      </div>
+      <p className="text-sm font-medium text-ink">{title}</p>
+      <p className="mt-1 max-w-sm text-[13px] text-ink-soft">{detail}</p>
+      {/* Retrying a refusal would never succeed, so it is not offered. */}
+      {onRetry && !refused && (
+        <Button className="mt-4" onClick={onRetry}>
+          Try again
+        </Button>
+      )}
     </div>
   );
 }

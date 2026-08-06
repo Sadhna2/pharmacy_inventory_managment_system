@@ -38,6 +38,21 @@ export const date = (value: string | null | undefined) =>
         year: "numeric",
       });
 
+/**
+ * Just the clock, for pairing under a date that is already on screen.
+ *
+ * `dateTime` below drops the year, which is fine inline but ambiguous in a
+ * list covering two years of history — so lists show `date` and this, stacked,
+ * and keep the year.
+ */
+export const clock = (value: string | null | undefined) =>
+  !value
+    ? ""
+    : new Date(value).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
 export const dateTime = (value: string | null | undefined) =>
   !value
     ? "—"
@@ -62,3 +77,16 @@ export const titleCase = (value: string) =>
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+
+/**
+ * Numbers as people write them: 40, not 40.0000; 21, not 21.0000.
+ *
+ * The API sends fixed-scale decimals, which is right for money and wrong for
+ * a field somebody is about to edit — nobody wants to select past four zeroes
+ * to correct a quantity.
+ */
+export const plain = (value: number | string): string => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(4)));
+};

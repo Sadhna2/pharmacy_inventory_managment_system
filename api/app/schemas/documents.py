@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +56,10 @@ class POLineOut(TaxLineOut):
     qty_ordered: Decimal
     qty_received: Decimal
     unit_price: Decimal
+    #: The line's own HSN, not the product's. The product's may have been
+    #: corrected since this order was raised, and this order was taxed under
+    #: the old one.
+    hsn_code: str | None = None
 
 
 class PurchaseOrderIn(BaseModel):
@@ -95,11 +100,27 @@ class PurchaseOrderOut(DocumentTotalsOut):
     warehouse_name: str | None = None
     status: DocumentStatus
     order_date: date
+    #: `order_date` is the business date the order bears and is a date by
+    #: design — it can be back-dated, and two orders raised minutes apart carry
+    #: the same one. This is when the row was actually written, which is what
+    #: someone means by "when did this happen" and the only thing that
+    #: distinguishes a run of same-day documents.
+    created_at: datetime
     expected_date: date | None = None
     notes: str | None = None
     created_by: int
+    #: Resolved names, not just ids. An approver looking at this order is
+    #: about to certify someone else's work, and "created_by: 2" does not
+    #: tell them whose. Null only if the account has since been deleted.
+    created_by_name: str | None = None
     approved_by: int | None = None
+    approved_by_name: str | None = None
     approved_at: datetime | None = None
+    #: Whether the distributor's own invoice is stored against this order.
+    #: A flag rather than the file: the receiving screen needs to know whether
+    #: to offer the download, and answering that by shipping a few megabytes
+    #: of photograph with every row of a list would be absurd.
+    has_invoice: bool = False
     lines: list[POLineOut] = []
 
 
@@ -188,6 +209,7 @@ class GoodsReceiptOut(BaseModel):
     supplier_invoice_date: date | None = None
     received_at: datetime
     received_by: int
+    received_by_name: str | None = None
     notes: str | None = None
     lines: list[GRNLineOut] = []
     #: Transfer numbers raised for the cross-docked lines, so the receipt
@@ -217,6 +239,9 @@ class SOLineOut(TaxLineOut):
     qty_ordered: Decimal
     qty_shipped: Decimal
     unit_price: Decimal
+    #: Read from the line, never from the product: this is the code an invoice
+    #: prints, and a reprint has to match the copy the customer was given.
+    hsn_code: str | None = None
 
 
 class SalesOrderIn(BaseModel):
@@ -243,6 +268,94 @@ class SalesOrderIn(BaseModel):
     lines: list[SOLineIn] = Field(min_length=1)
 
 
+class SalesOrderPlanIn(BaseModel):
+    """A request to be planned, with no warehouse named — that is the answer."""
+
+    model_config = ConfigDict(json_schema_extra={"example": {
+            "customer_id": 1,
+            "lines": [
+                    {"product_id": 4, "qty_ordered": 500},
+                    {"product_id": 6, "qty_ordered": 200}
+            ]
+    }})
+
+    customer_id: int
+    lines: list[SOLineIn] = Field(min_length=1)
+
+
+class SuggestedPriceOut(BaseModel):
+    """What to put in the price box before anyone types, and where it came from.
+
+    `source` is part of the answer, not decoration: "the price you charged them
+    last time" and "the list price we have never sold at" deserve different
+    amounts of trust from whoever is about to accept the number.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    product_id: int
+    unit_price: Decimal
+    source: Literal["last_charged", "mrp", "none"]
+    last_charged_on: date | None = None
+
+
+class PlannedLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    product_id: int
+    product_name: str
+    sku: str
+    quantity: Decimal
+    unit_price: Decimal
+
+
+class AlternativeOut(BaseModel):
+    """Another branch that could take this order's lines in full instead.
+
+    Its own split and total, because shipping the same lines from another
+    state turns CGST + SGST into IGST.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    warehouse_id: int
+    warehouse_name: str
+    state_code: str
+    is_interstate: bool
+    subtotal: Decimal
+    tax_total: Decimal
+    grand_total: Decimal
+
+
+class PlannedOrderOut(BaseModel):
+    """One branch's share — everything `POST /sales-orders` needs to raise it."""
+
+    model_config = ConfigDict(from_attributes=True)
+    warehouse_id: int
+    warehouse_name: str
+    state_code: str
+    is_interstate: bool
+    lines: list[PlannedLineOut]
+    subtotal: Decimal
+    tax_total: Decimal
+    grand_total: Decimal
+    alternatives: list[AlternativeOut] = []
+
+
+class ShortfallOut(BaseModel):
+    """What the chain cannot cover, said plainly rather than left implicit."""
+
+    model_config = ConfigDict(from_attributes=True)
+    product_id: int
+    product_name: str
+    requested: Decimal
+    planned: Decimal
+
+
+class SalesOrderPlanOut(BaseModel):
+    """Nothing here has been written. Each order still has to be raised."""
+
+    orders: list[PlannedOrderOut]
+    shortfalls: list[ShortfallOut]
+
+
 class SalesOrderOut(DocumentTotalsOut):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -253,6 +366,8 @@ class SalesOrderOut(DocumentTotalsOut):
     warehouse_name: str | None = None
     status: DocumentStatus
     order_date: date
+    #: See PurchaseOrderOut — the business date is a date, this is the clock.
+    created_at: datetime
     notes: str | None = None
     lines: list[SOLineOut] = []
 
@@ -296,16 +411,36 @@ class TransferLineIn(BaseModel):
     lot_id: int | None = None
 
 
+class TransferBatchOut(BaseModel):
+    """A batch that actually left, and how much of it."""
+
+    lot_id: int | None = None
+    lot_code: str | None = None
+    expiry_date: date | None = None
+    quantity: Decimal
+
+
 class TransferLineOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     product_id: int
     sku: str | None = None
     product_name: str | None = None
+    #: The batch this line *asked* for, and usually nothing — pinning one is
+    #: the exception. See `batches` for what was actually sent.
     lot_id: int | None = None
     lot_code: str | None = None
     quantity: Decimal
     qty_received: Decimal
+    #: What left the shelf, read back from the ledger.
+    #:
+    #: A line normally names no batch: FEFO decides at dispatch, and it can
+    #: split one line across two lots when the oldest does not cover it. So
+    #: until the goods move there is no batch to show, and afterwards the only
+    #: record of which ones went is the dispatch movements. Empty for a
+    #: transfer that has not been dispatched, which is the honest answer rather
+    #: than a guess at what FEFO would pick.
+    batches: list[TransferBatchOut] = []
 
 
 class TransferIn(BaseModel):
@@ -336,6 +471,17 @@ class TransferOut(BaseModel):
     to_warehouse_id: int
     to_warehouse_name: str | None = None
     status: DocumentStatus
+    #: A transfer carried neither of these before. It has always recorded who
+    #: raised and who approved it — the columns were simply never returned,
+    #: so the screen had nothing to show.
+    created_by: int
+    created_by_name: str | None = None
+    approved_by: int | None = None
+    approved_by_name: str | None = None
+    #: When it was raised. The list comes back newest first, and with only a
+    #: transfer number on screen there was no way to see that — the numbers
+    #: ascend with the id, so the order was right and looked arbitrary.
+    created_at: datetime
     dispatched_at: datetime | None = None
     received_at: datetime | None = None
     notes: str | None = None
@@ -392,8 +538,14 @@ class AdjustmentOut(BaseModel):
     warehouse_id: int
     reason_code: str
     status: DocumentStatus
+    #: An adjustment carried no date at all — the screen listed a stock
+    #: correction with no way to say when it was made, which is the first
+    #: thing anyone auditing one asks.
+    created_at: datetime
     created_by: int
+    created_by_name: str | None = None
     approved_by: int | None = None
+    approved_by_name: str | None = None
     notes: str | None = None
     lines: list[AdjustmentLineOut] = []
 

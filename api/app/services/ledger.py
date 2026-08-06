@@ -233,6 +233,35 @@ def reverse_movement(
 # --- validation -------------------------------------------------------------
 
 
+def validate_line(
+    db: Session,
+    *,
+    product_id: int,
+    quantity: Decimal,
+    lot_id: int | None = None,
+    serial_id: int | None = None,
+    bin_id: int | None = None,
+) -> None:
+    """Would `post_movement` accept this line? Ask before writing a document.
+
+    Exists because a document that will be refused at posting time is worth
+    refusing at raise time, while the person who typed it is still looking at
+    the form. A stock adjustment used to sail through creation and then fail
+    every approval, with nothing on the screen able to withdraw it — so it sat
+    in the approval queue forever, in front of an approver who could neither
+    pass it nor clear it.
+
+    Deliberately the same code path `post_movement` runs, not a copy of it: a
+    second implementation of these rules would drift, and the drift would show
+    up as exactly the bug this is here to prevent.
+    """
+    product = db.get(Product, product_id)
+    if product is None:
+        raise NotFoundError(f"Product {product_id} not found")
+    _validate_tracking(db, product, lot_id, serial_id, Decimal(quantity))
+    _validate_storage(db, product, bin_id)
+
+
 def _validate_tracking(
     db: Session,
     product: Product,
