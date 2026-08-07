@@ -63,9 +63,10 @@ is a decision rather than an oversight.
 ### 2.1 Product perspective
 
 A self-contained web application: React SPA, FastAPI backend, PostgreSQL
-database, served behind Caddy. The only outbound dependency is a Google Gemini
-call used solely for reading invoice photographs, and the system runs fully
-without it.
+database, served behind Caddy. The only outbound dependency is Google Gemini,
+called for two things and two only: reading invoice photographs, and turning a
+typed question into one SELECT. The system runs fully without it — both
+features switch themselves off and nothing else notices.
 
 ### 2.2 User classes
 
@@ -173,8 +174,23 @@ tests unless marked otherwise.
 | FR-AI-6 | Every exception links to the ledger rows it was computed from |
 | FR-AI-7 | Measure supplier lead times as distributions, never quoted figures |
 | FR-AI-8 | Read a photographed supplier invoice into a **draft** goods receipt |
-| FR-AI-9 | **No analysis output writes to the stock ledger** |
-| FR-AI-10 | Each capability has an administrator switch **enforced server-side** |
+| FR-AI-9 | Answer a question typed in English with rows out of this database |
+| FR-AI-10 | **No analysis output writes to the stock ledger** |
+| FR-AI-11 | Each capability has an administrator switch **enforced server-side** |
+
+### 3.6a Asking a question in English (FR-ASK)
+
+| ID | Requirement |
+|---|---|
+| FR-ASK-1 | The model proposes **exactly one SELECT** and never composes the answer itself; what is shown is rows the database returned |
+| FR-ASK-2 | A proposed statement is refused before execution unless it is a single read — no second statement, no writing CTE, no function that reaches outside the database |
+| FR-ASK-3 | The database plans the statement (`EXPLAIN`) before it is executed |
+| FR-ASK-4 | Execution is in a `READ ONLY` transaction, under a statement timeout, capped at 200 rows |
+| FR-ASK-5 | A branch-scoped account is held to the same warehouses the ORM holds it to; raw SQL grants no wider reach |
+| FR-ASK-6 | Every answer carries the SQL that produced it and the assumptions made in writing it |
+| FR-ASK-7 | **A refusal and a question back are outcomes, not errors** — returned as 200 with a reason, so a client cannot render either as a failure |
+| FR-ASK-8 | A question the database cannot answer is declined in words, never answered with an empty table |
+| FR-ASK-9 | Follow-up memory is **exactly one turn**; a longer history is not carried |
 
 ### 3.7 Invoice intake, specifically (FR-OCR)
 
@@ -307,8 +323,8 @@ hand exactly as before.
 
 ## 6. Interface requirements
 
-- **API** — REST over HTTP, JSON, documented as OpenAPI 3 at `/docs`; 96
-  operations across 71 paths.
+- **API** — REST over HTTP, JSON, documented as OpenAPI 3 at `/docs`; 97
+  operations across 72 paths.
 - **Errors** — RFC 7807 problem details with a stable `type` per error class.
 - **Web** — responsive; every destructive action confirms; every screen states
   what it is showing and over what period.
@@ -326,7 +342,7 @@ indefinite — nothing is hard-deleted; records are retired.
 
 | Method | Coverage |
 |---|---|
-| Automated tests | 392, run in CI on every push against a real PostgreSQL and a real HTTP server |
+| Automated tests | 494, run in CI on every push against a real PostgreSQL and a real HTTP server |
 | Ledger invariants | Balances rebuilt from the ledger and compared |
 | Concurrency | Parallel allocation of one batch asserted to serialise |
 | RBAC | Each role asserted against permitted and forbidden endpoints |
@@ -360,7 +376,6 @@ Named deliberately, so their absence is a decision:
 - Prescription capture and dispensing against a prescription
 - Barcode hardware integration (barcodes are stored, not scanned by device)
 - Multi-entity or multi-currency operation
-- Natural-language reporting (`features.nl_reporting` — designed, not built)
 
 ---
 
@@ -376,5 +391,6 @@ Named deliberately, so their absence is a decision:
 | FR-GST | `app/services/gst.py` | `test_e2e.py` (the split on a live order), `test_invoice_html.py` (line and document arithmetic), `test_line_hsn.py` (the frozen classification) |
 | FR-GST-5–8 (tax invoice) | `app/services/invoice_html.py`, `app/api/v1/operations.py` | `test_invoice_html.py`, `test_invoice_route.py` |
 | FR-AI | `app/ai/` | `test_ai.py`, `test_settings.py` |
+| FR-ASK | `app/ai/ask/` | `test_ask_safety.py`, `test_ask_service.py`, `test_ask_schema_context.py` |
 | FR-OCR | `app/ai/intake/` | `test_intake_router.py`, `test_intake_match.py` |
 | FR-AUD | `app/services/audit.py` | `test_e2e.py`, `test_settings.py` |

@@ -1,6 +1,6 @@
 # Demo video — shot script
 
-**Target length** 4–5 minutes. **Recording** 1280×800, browser zoom 100%,
+**Target length** 5–6 minutes. **Recording** 1280×800, browser zoom 100%,
 sidebar expanded. Sign in beforehand so no password is typed on camera.
 
 Before recording:
@@ -146,8 +146,8 @@ invoice — everything except the transcription still runs live.
 
 **Say**
 
-> One capability is a generative model. Four are statistics, and we label them
-> that way. This is Holt-Winters exponential smoothing, and every series is
+> Two capabilities are generative models. Four are statistics, and we label
+> them that way. This is Holt-Winters exponential smoothing, and every series is
 > backtested against "the same weekday last week" — if it can't beat that
 > baseline, it says so rather than quietly using the fancier model.
 
@@ -161,7 +161,42 @@ invoice — everything except the transcription still runs live.
 
 ---
 
-## Shot 9 — The switch is real (4:20–4:40)
+## Shot 9 — Ask it a question (4:20–5:15) — **the second key shot**
+
+**Do** Analysis → Ask. Type: *"which batches expire in the next 90 days and how
+many units are in them?"*
+
+**Say**
+
+> The second generative feature. I type a question, and I get rows.
+
+**Do** Open **Show the SQL**.
+
+**Say**
+
+> And this is the part that matters. The model didn't write the answer — it
+> wrote this query, one SELECT. A guard refuses anything that isn't a single
+> read, Postgres plans it before it runs, and it executes read-only, timed out
+> and capped. What's on screen is rows Postgres returned, and the query is
+> right here to disagree with.
+
+**Do** Ask: *"which customers owe us money?"* Wait for the refusal.
+
+**Say**
+
+> Now watch it decline. There is no payments table in this system — we record
+> what moved, not what's owed. The tempting answer was available: add up every
+> order. That would have named a walk-in customer who paid cash at the counter
+> as a debtor, and it would have looked completely reasonable.
+>
+> Refusing is the feature.
+
+> Pause on the refusal for a beat. It is the least flashy thing in the demo and
+> the most convincing.
+
+---
+
+## Shot 10 — The switch is real (5:15–5:35)
 
 **Do** Settings (as Admin) → toggle **Invoice scanning** off → back to
 Purchasing → the callout is gone.
@@ -176,14 +211,14 @@ Purchasing → the callout is gone.
 
 ---
 
-## Shot 10 — Close (4:40–5:00)
+## Shot 11 — Close (5:35–6:00)
 
 **Screen** README, or the terminal with `docker compose up`.
 
 **Say**
 
 > Docker is the only prerequisite — one command on macOS, Windows or Linux.
-> Three hundred and ninety-two tests run against a real Postgres and a real
+> Four hundred and ninety-four tests run against a real Postgres and a real
 > HTTP server on every push.
 >
 > The guarantees hold because of how the system is built — an append-only
@@ -198,5 +233,7 @@ Purchasing → the callout is gone.
 |---|---|
 | Scan is slow or times out | Set `INTAKE_FIXTURE_DIR=fixtures/intake` and re-record shot 5; say the transcription is replayed and everything else runs live |
 | No API key / 503 | Same fixture path; the feature degrades rather than breaking |
+| Ask is slow, or the quota is spent | It has no fixture mode — cut shot 9 and say so, or ask a question you have already run this session. Do not retry on camera; a spinner is worse than a missing shot |
+| Ask answers something you did not expect | Open the SQL and read it aloud. Being able to see why is the claim being made; a surprising answer with its query attached demonstrates it better than a tidy one |
 | A line won't match | That is the designed behaviour — show the shortlist and say refusing beats guessing a wrong batch |
 | Seed is empty | `docker compose down -v && docker compose up` |

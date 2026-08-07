@@ -41,7 +41,7 @@ Short list of what is agreed but not yet built. Delete a line when it ships.
 
 - **The test suite no longer touches your data.** `./scripts/test.sh` runs the
   whole thing the way CI does — throwaway `postgres:16` container, migrations
-  from scratch, full seed, API on :8001, 1,908 backend test cases, then the frontend
+  from scratch, full seed, API on :8001, 2,040 backend test cases, then the frontend
   lint/typecheck/build — and deletes the container afterwards. About four
   minutes. `--backend` skips the frontend, `--keep` leaves the database up,
   and extra arguments go to pytest.
@@ -189,6 +189,42 @@ real order.
       regressing to all-or-nothing, because a fresh seed links everything
       either way. It needs a database seeded, broken, and re-synced.
 
+## Ask — what shipped, and what was deliberately left out
+
+Shipped in #24, with #25 and #26 fixing what the first full CI run and the
+first fifty real questions found.
+
+Four things from the design are **not** in the shipped code. None is an
+oversight; each is written down here so it stays a decision:
+
+- [ ] **`nl_query_log` is not written.** No record of which questions people
+      ask, which came back empty, or which were refused. This is the one worth
+      doing first — every accuracy fix so far was tuned against questions the
+      authors invented, because there is no source of real ones.
+- [ ] **Cost columns are not stripped from the schema briefing.** The design
+      had Ask never seeing `purchase_cost` or `unit_cost`. They are left in
+      because valuing stock is a legitimate question, and the briefing instead
+      tells the model what those columns mean — which was one of the seven
+      wrong answers, now fixed. Stripping them would make "what is our stock
+      worth" unanswerable, so this is a trade, not a gap to close blindly.
+- [ ] **The `nlq_reader` read-only Postgres role is optional and unused.**
+      `DATABASE_URL_RO` is read if set and nothing sets it. The transaction is
+      already `READ ONLY`, so this is defence in depth rather than the only
+      defence — but it is the difference between a policy and a permission.
+- [ ] **`ai.ask` gates nothing.** The router is gated on `ai.view` instead, on
+      purpose: `ai.ask` is granted to staff and customers, and the scope guard
+      refuses a branch-scoped account most of the tables anyone asks about.
+      Offering those accounts a screen that could only refuse them is worse
+      than not offering it. The comment in `router.py` says so; the permission
+      row stays in the catalogue.
+
+And one that came out of testing rather than the design:
+
+- [ ] **`golden_questions.py` is not scored in CI.** 36 cases with an answer
+      key, run by nothing. A change to the schema briefing can make an answer
+      worse and no build will notice — which already happened once, and was
+      caught by a person asking rather than by a test.
+
 ## Next up
 
 - [x] **Merge PR #19 and deploy.** Done, along with #20 and #21. The
@@ -197,9 +233,10 @@ real order.
 - [ ] **Documentation figures.** Swept on 6 August — every count in the
       README, SRS, architecture, ER diagram, project report, slides, demo
       script, product guide and the deck was re-derived from source. Was
-      284–290 tests / 40 tables / 89 foreign keys / 88 operations; is now 392
-      test functions (1,908 cases), 42 tables, 2 views, 92 foreign keys, 96
-      operations across 71 paths. Uncommitted at the time of writing.
+      284–290 tests / 40 tables / 89 foreign keys / 88 operations. Swept again
+      on 7 August when Ask shipped: now 494 test functions (2,040 cases), 42
+      tables, 2 views, 92 foreign keys, 97 operations across 72 paths. Tables
+      and keys are unchanged because Ask adds none — it only reads.
 
 ## Not code — yours to do, nothing here is waiting on me
 

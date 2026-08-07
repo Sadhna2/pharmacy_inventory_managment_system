@@ -318,10 +318,21 @@ records which method won *and* that it beat the seasonal-naive baseline — a
 series that could not beat "the same weekday last week" says so rather than
 quietly using the fancier model.
 
-**Invoice intake stores nothing here.** Its only persistent trace is the
-learned alias on `product_suppliers.supplier_sku` and a row in `audit_logs`.
-The extraction itself is never saved — it becomes a form, and the form becomes
-a goods receipt only if a person submits it.
+⚠️ **All four are drawn here and all four are empty in practice.** Nothing in
+the application writes a row to any of them: the figures are computed from the
+ledger when a screen asks for them and are never persisted. They are modelled
+because the shape is part of the design, and the distinction between *present
+in the schema* and *populated* matters more here than anywhere else in this
+document — a query against them is valid SQL that returns nothing, and "no
+rows" reads as *there is nothing to reorder*. Ask is told this explicitly, and
+declines such a question in words rather than answering it with an empty table.
+
+**Neither AI feature stores anything here.** Invoice intake's only persistent
+trace is the learned alias on `product_suppliers.supplier_sku` and a row in
+`audit_logs`; the extraction itself is never saved — it becomes a form, and the
+form becomes a goods receipt only if a person submits it. Ask writes nothing at
+all: it holds one read-only connection, and its answers live only in the
+browser tab that asked.
 
 ---
 

@@ -514,6 +514,7 @@ figcaption { max-width: 42rem; }
   <div class="rail-group">
     <p>Operations</p>
     <a href="#purchasing">Purchasing</a>
+    <a href="#scanning">Scanning an invoice</a>
     <a href="#sales">Sales</a>
     <a href="#transfers">Transfers</a>
     <a href="#adjustments">Adjustments</a>
@@ -524,7 +525,7 @@ figcaption { max-width: 42rem; }
     <a href="#forecast">Demand forecast</a>
     <a href="#exceptions">Exceptions</a>
     <a href="#leadtimes">Supplier lead times</a>
-    <a href="#soon">Coming soon</a>
+    <a href="#ask">Ask a question</a>
   </div>
   <div class="rail-group">
     <p>Compliance</p>
@@ -980,6 +981,96 @@ figcaption { max-width: 42rem; }
   </div>
 </section>
 
+<!-- ======================================================= invoicescan -->
+<section id="scanning">
+  <p class="kicker">Operations &middot; /purchasing &rarr; New order</p>
+  <h2>Scanning an invoice <span class="pill live">Live</span></h2>
+  <p class="oneline">
+    Photograph a distributor's invoice and have fourteen lines of batch codes,
+    expiry dates, quantities and rates fill themselves in &mdash; then check what
+    the system says about its own reading.
+  </p>
+
+  <h3>What it does</h3>
+  <p>
+    Inside <b>New order</b>, once you have chosen a warehouse and a supplier, a
+    <b>Scan an invoice</b> button appears. Give it a photograph or a PDF and it
+    reads the document into the form: invoice number and date, and per line the
+    product, pack, HSN code, batch number, expiry, quantity, rate and tax.
+  </p>
+  <p>
+    <b>It creates nothing.</b> There is no path from this feature to the stock
+    ledger. What comes back is a filled-in form and a list of findings; a person
+    still presses the same button they pressed before.
+  </p>
+
+  <h3>The reading is checked by arithmetic, not by trust</h3>
+  <p>
+    An invoice is an <b>over-determined</b> document, and that is what makes this
+    safe. Quantity times rate must equal the line amount. The lines must sum to
+    the subtotal. The fifteenth character of a GSTIN is a checksum over the other
+    fourteen. None of those need an answer key &mdash; the paper checks itself.
+  </p>
+  <p>
+    So the system does not ask the model to be right. It asks it to produce
+    something that <em>can be checked</em>, and then checks it. Findings are
+    graded by what they could cause: <b>BLOCK</b> only where wrong stock could
+    reach a shelf, <b>REVIEW</b> otherwise.
+  </p>
+  <div class="note">
+    <p>
+      <b>Worth trying: invoice 23.</b> Its page carries two GSTINs &mdash; the
+      supplier's and ours &mdash; and the reading takes one character from the
+      wrong one. The result has the right shape, the right length and the right
+      state code; no human would query it. The checksum does, because it is
+      arithmetic. The finding says a character is wrong and deliberately offers
+      no correction: recomputing the check digit would assume the other fourteen
+      are right and hand you a second wrong number that now passes validation.
+    </p>
+  </div>
+
+  <h3>It learns each distributor's names</h3>
+  <p>
+    A distributor prints <code>OMEZ-20 CAP</code> where the catalogue says
+    <em>Omeprazole 20mg</em>. Resolve it once and the system remembers that name
+    <b>for that supplier</b>, so every later invoice from them matches exactly.
+    Across the six demonstration invoices it resolves 70 of 73 lines; the three
+    it refuses are ambiguous pack sizes, offered as a shortlist rather than
+    guessed at.
+  </p>
+
+  <h3>How accurate it actually is</h3>
+  <p>
+    Measured on <b>50 generated invoices</b> spanning different layouts, fonts,
+    column sets, tax presentations and scan qualities &mdash; with the correct
+    answer written <em>first</em> and the document rendered from it, so the
+    answer key cannot itself be wrong.
+  </p>
+  <p>
+    <b>88% of invoices are read with no errors at all</b> &mdash; 44 of 50. The
+    remaining six each miss one field, and every one of those is caught by the
+    checks rather than passed through. Batch number, quantity and rate &mdash;
+    the three fields where an error would put wrong stock on a shelf &mdash; are
+    correct every single time, across 462 lines.
+  </p>
+  <p>
+    That result is the argument <em>for</em> the review step, not against the
+    feature. Roughly one invoice in eight needs a correction: a queue a person
+    can work through, and nowhere near good enough to book stock unattended.
+  </p>
+
+  <div class="note">
+    <p>
+      <b>No network? It still demonstrates.</b> Six invoices and what the model
+      read from each are recorded in the repository, keyed by a hash of the image
+      so a reading is bound to the exact file that produced it. Only the
+      transcription is replayed &mdash; the arithmetic, the checksum and the
+      product matching all still run, because none of them ever made a network
+      call.
+    </p>
+  </div>
+</section>
+
 <!-- ============================================================= sales -->
 <section id="sales">
   <p class="kicker">Operations &middot; /sales-orders</p>
@@ -1079,10 +1170,10 @@ figcaption { max-width: 42rem; }
 
 <section id="analysis-intro">
   <p class="kicker">Analysis</p>
-  <h2>The four features that read the past</h2>
+  <h2>The five features that read the past</h2>
   <p>
     Everything above this point <em>writes</em> to the ledger. Everything below
-    only <em>reads</em> it. That separation is strict: none of these four features
+    only <em>reads</em> it. That separation is strict: none of these five features
     can change a single unit of stock. The worst thing a bug in them can do is give
     bad advice on a screen — never corrupt the record.
   </p>
@@ -1431,61 +1522,127 @@ figcaption { max-width: 42rem; }
   </div>
 </section>
 
-<!-- ============================================================= soon -->
-<section id="soon">
-  <p class="kicker">Analysis &middot; designed, not built</p>
-  <h2>Coming soon</h2>
-  <p>
-    Two further features are fully designed and have their place in the system
-    reserved — they appear on the Settings screen as capabilities that cannot yet
-    be switched on. They are listed here so the plan is visible, not hidden.
+<!-- ============================================================== ask -->
+<section id="ask">
+  <p class="kicker">Analysis &middot; /ask</p>
+  <h2>Ask a question <span class="pill live">Live</span></h2>
+  <p class="oneline">
+    Type a question in plain English and get rows back &mdash; with the query that
+    produced them attached, so you can check the answer rather than believe it.
   </p>
 
-  <div class="soon-grid">
-    <div class="soon-card">
-      <span class="pill soon">Coming soon</span>
-      <h3>Ask a question</h3>
-      <p>
-        Type an inventory question in plain English — <em>"which cold-chain
-        products at Andheri expire within 60 days?"</em> — and have it fill in the
-        filters on the screen where that question belongs.
-      </p>
-      <p>
-        The design point is that it <b>drives the existing screens</b> rather than
-        answering in a chat window. You land on the real page with the real filters
-        applied, so you can see what was asked, adjust it, and trust the result.
-      </p>
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/ask</span></div>
+      <button type="button" data-zoom><img src="{{ask}}" alt="A question about batches expiring in 90 days, answered with a sortable table of 31 batches showing code, product, expiry date and units" loading="lazy"></button>
     </div>
+    <figcaption>One question, 31 rows, 9 milliseconds in the database. The columns came out of the query the model wrote, so the table has no fixed shape &mdash; drag a heading to move it, drag its edge to resize, click to sort, or take the whole thing as a CSV.</figcaption>
+  </figure>
 
-    <div class="soon-card">
-      <span class="pill soon">Coming soon</span>
-      <h3>Invoice scanning</h3>
-      <p>
-        Photograph a distributor's invoice and have the system read it — supplier,
-        products, quantities, batch numbers, expiry dates — and pre-fill a goods
-        receipt.
-      </p>
-      <p>
-        <b>We measured this before deciding to build it.</b> Fifty invoices were
-        generated across different layouts, fonts, column sets, tax presentations and
-        scan qualities — with the correct answer written <em>first</em> and the
-        document rendered from it, so the answer key cannot itself be wrong. A
-        current vision model reads <b>88% of them with no errors at all</b>, and gets
-        batch number, rate and quantity right every single time, without dropping or
-        inventing a line across 462 of them.
-      </p>
-      <p>
-        That result is the argument for the review step rather than against the
-        feature. Roughly one invoice in eight needs a correction — a queue a person
-        can work through, and nowhere near good enough to book stock unattended. It
-        will <b>never post to the ledger by itself</b>, because a misread expiry date
-        is a patient safety problem, not a data-entry problem.
-      </p>
+  <h3>The model does not answer your question</h3>
+  <p>
+    This is the part worth understanding, because it is what makes the feature
+    safe to put in front of stock data. The model is given a description of the
+    database and your question, and its <b>only</b> job is to write one
+    <code>SELECT</code> statement. It never writes the answer. What appears on
+    screen is rows PostgreSQL returned.
+  </p>
+  <p>
+    That statement then has to get past four things before it runs:
+  </p>
+  <ol>
+    <li>
+      <b>A guard that refuses anything which is not a single read.</b> No second
+      statement, no <code>UPDATE</code> hiding in a <code>WITH</code> clause, no
+      function that can touch a file or open a connection.
+    </li>
+    <li>
+      <b>The database itself.</b> The statement is planned before it is executed,
+      so PostgreSQL has agreed it is valid SQL against real columns.
+    </li>
+    <li>
+      <b>A read-only transaction</b>, with a ten-second time limit and a cap of
+      200 rows. A query that would take the site down is stopped by the clock,
+      not by good intentions.
+    </li>
+    <li>
+      <b>Your own permissions.</b> A branch user gets the same branch they get
+      everywhere else. Asking a question is not a way around who you are.
+    </li>
+  </ol>
+  <div class="note">
+    <p>
+      <b>Why not simply instruct the model to behave?</b> Because instructions in
+      a prompt are a request, not a control &mdash; and people are inventive about
+      talking models out of them. Nothing here relies on the model cooperating.
+      The worst a cleverly worded question can achieve is to make it
+      <em>propose</em> something destructive, which is then refused before
+      anything reads it.
+    </p>
+  </div>
+
+  <h3>Every answer shows its working</h3>
+
+  <figure class="shot">
+    <div class="frame">
+      <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/ask &mdash; Show the SQL</span></div>
+      <button type="button" data-zoom><img src="{{ask-sql}}" alt="The same answer with the SQL disclosure opened, showing the SELECT statement that produced the rows" loading="lazy"></button>
     </div>
+    <figcaption>The query is one click away under every answer. If a number looks wrong, this is where you find out why &mdash; and the note underneath is careful to say that the model's confidence score is a self-report that nothing acts on.</figcaption>
+  </figure>
+
+  <p>
+    Alongside the query, <b>What it decided for you</b> lists the judgement calls
+    made in writing it: which branch a name was matched to, that reversals were
+    excluded, that a total is in units because this database holds no selling
+    price. Those are exactly the assumptions that turn an answer into a different
+    answer, so they are written down rather than buried.
+  </p>
+
+  <h3>It will tell you when it cannot answer</h3>
+  <p>
+    Ask <em>"which customers owe us money?"</em> and it declines, in a sentence:
+    this system records what moved, not what is owed, and there is no payments
+    table anywhere in it. The tempting wrong answer was available &mdash; add up
+    every order raised &mdash; and it would have named a walk-in customer who paid
+    cash at the counter as a debtor.
+  </p>
+  <p>
+    The same applies to forecasts. Those figures are calculated when you open the
+    Demand forecast screen and never stored, so a query for them is valid SQL that
+    returns nothing &mdash; and <b>"no rows" reads as "there is nothing to
+    reorder"</b>, which is the most dangerous thing this system could tell you.
+    It says so in words instead, and points at the screen that computes them.
+  </p>
+  <p>
+    If a question could reasonably mean two things, it asks which you meant rather
+    than picking one quietly. A question handed back is a correct outcome here,
+    not a failure.
+  </p>
+
+  <h3>Follow-ups, and why they are deliberately short</h3>
+  <p>
+    You can refine: <em>"only the ones at Andheri"</em>, <em>"and across the whole
+    chain?"</em>, <em>"who supplies it?"</em>. It carries the previous question and
+    its query &mdash; and <b>nothing older than that</b>. Carrying more feels
+    smarter and behaves worse: with a long history the system starts quietly
+    dropping a filter you set three questions ago and hands back a smaller,
+    entirely believable number that nobody thinks to question.
+  </p>
+
+  <div class="note">
+    <p>
+      <b>Being honest about accuracy.</b> Fifty questions were put to this feature
+      and every answer checked against a query written by hand. Nothing crashed;
+      <b>seven answers were wrong</b> &mdash; each one a fact about this business
+      that the database structure alone cannot state, such as the ledger recording
+      what stock <em>cost</em> and never what it <em>sold</em> for. All seven were
+      fixed by improving what the model is told, and re-checked. A question this
+      feature has not been asked before can still produce a plausible wrong
+      number, which is the honest reason the query sits under every answer.
+    </p>
   </div>
 </section>
-
-<hr class="rule">
 
 <!-- ========================================================== recalls -->
 <section id="recalls">
@@ -1751,7 +1908,7 @@ figcaption { max-width: 42rem; }
     <div class="arrow">&rarr;</div>
     <div class="box"><b>Caddy</b><span>Reverse proxy, automatic HTTPS certificates</span></div>
     <div class="arrow">&rarr;</div>
-    <div class="box"><b>FastAPI</b><span>Python, 96 endpoints, OpenAPI generated automatically</span></div>
+    <div class="box"><b>FastAPI</b><span>Python, 97 endpoints, OpenAPI generated automatically</span></div>
     <div class="arrow">&rarr;</div>
     <div class="box"><b>PostgreSQL 16</b><span>42 tables, the single source of truth</span></div>
   </div>
@@ -2012,7 +2169,7 @@ figcaption { max-width: 42rem; }
   <p class="kicker">Reference</p>
   <h2>Testing</h2>
   <p>
-    392 tests run against a live API and a real database. They deliberately do not
+    494 tests run against a live API and a real database. They deliberately do not
     assert that the forecast is accurate — pinning an error rate in a test only makes
     the suite brittle. They assert the properties that cause real damage when they
     break:
@@ -2133,8 +2290,8 @@ figcaption { max-width: 42rem; }
     generated history behind it; no interface has been mocked up or retouched.
   </p>
   <p>
-    Two features are marked <span class="pill soon">Coming soon</span> and are not
-    built. Everything else described here is working, tested and deployed.
+    Everything described here is working, tested and deployed. Nothing on this
+    page is a plan.
   </p>
   <p>
     The figures inside the screenshots &mdash; movement counts, supplier lead times,

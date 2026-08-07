@@ -4,21 +4,31 @@ Multi-branch pharmacy chain — 1 central warehouse, 5 branches, retail + instit
 Built on an **append-only stock ledger**: no row in `stock_movements` is ever updated or
 deleted, and every balance you see is derived from it.
 
-**Status:** Layer 0 (spine), Layer 1 (operations), five of the six Layer 2
-analysis features and **invoice intake** are complete and verified, along with
-an administrator settings screen that makes every AI threshold and feature
-switch tunable at runtime. 392 tests, most of them end-to-end against a live
-server and a real Postgres — 1,908 cases once the parametrised GST sweep is
-counted case by case.
+**Status:** Layer 0 (spine), Layer 1 (operations), **all six** Layer 2 analysis
+features and **invoice intake** are complete and verified, along with an
+administrator settings screen that makes every AI threshold and feature switch
+tunable at runtime. 494 tests, most of them end-to-end against a live server
+and a real Postgres — 2,040 cases once the parametrised GST sweep is counted
+case by case.
 
-Invoice intake photographs a distributor's invoice and fills in the goods
-receipt — the one place a language model earns its keep here, and the one place
-its output is checked by arithmetic before anyone sees it (below).
+Two of those features call a language model, and both are built the same way:
+the model proposes, deterministic code decides.
 
-Natural-language reporting is designed but not built; it is shipped switched
-off and the API refuses its routes while the switch is off, so nothing
-half-finished is reachable. Sales invoicing and payment tracking are specified
-but not started — the system records what moved, not yet what is owed.
+**Invoice intake** photographs a distributor's invoice and fills in the goods
+receipt. Every reading is checked against the document's own arithmetic before
+anyone sees it (below).
+
+**Ask** takes a question typed in English — *"which batches expire in the next
+90 days?"* — and answers it with rows out of this database. The model writes
+exactly one `SELECT` and never the answer: a guard refuses anything that is not
+a single read, Postgres plans it before it runs, and it executes in a read-only
+transaction under a ten-second timeout and a 200-row cap. Every answer carries
+the query that produced it, so it can be checked rather than believed.
+
+Sales invoicing and payment tracking are specified but not started — the system
+records what moved, not yet what is owed. Ask knows that about itself: asked who
+owes money, it says the figure is not recorded here rather than summing the
+orders and calling it a debt.
 
 Code comments cite `ARCHITECTURE.md` by section. That file is the internal
 design reference and is deliberately not published here; the citations are
@@ -34,10 +44,10 @@ kept because they explain *why* a given line is written the way it is.
 | [Architecture](docs/ARCHITECTURE.md) | System, layer, ledger and deployment diagrams; the request path; the stack |
 | [ER diagram](docs/ER-DIAGRAM.md) | 42 tables in five readable groups, read from a live database |
 | [Project report](docs/PROJECT-REPORT.md) | Problem, solution, implementation, testing, **limitations**, future scope |
-| [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | 18-slide review/demo deck, speaker notes in the notes pane |
+| [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | Review/demo deck, speaker notes in the notes pane. **Built before Ask shipped — [SLIDES.md](docs/SLIDES.md) is the current one** |
 | [Slides — source](docs/SLIDES.md) | The same deck as Markdown, for diffing and editing |
-| [Demo video script](docs/DEMO-VIDEO-SCRIPT.md) | Shot-by-shot script, ~5 minutes, with recovery notes |
-| [Product guide](docs/product-guide/PRODUCT-GUIDE.html) | Screen-by-screen user manual, 24 screenshots inlined — [download it](https://github.com/Sadhna2/pharmacy_inventory_managment_system/raw/main/docs/product-guide/PRODUCT-GUIDE.html) and open it; it needs no network and no other files |
+| [Demo video script](docs/DEMO-VIDEO-SCRIPT.md) | Shot-by-shot script, ~6 minutes, with recovery notes |
+| [Product guide](docs/product-guide/PRODUCT-GUIDE.html) | Screen-by-screen user manual, 26 screenshots inlined — [download it](https://github.com/Sadhna2/pharmacy_inventory_managment_system/raw/main/docs/product-guide/PRODUCT-GUIDE.html) and open it; it needs no network and no other files |
 
 The diagrams are Mermaid and render directly on GitHub — there are no image
 files to regenerate when the schema changes.
@@ -161,17 +171,24 @@ holds batches a week nearer expiry — `--rebuild` regenerates.
 Run individual steps by hand if you want (`app.seed.history --reset`,
 `app.seed.showcase`); `demo` is just the three of them with the guards on.
 
-### Invoice intake (the AI feature)
+### The two AI features
 
-Optional, and off unless you give it a key. Get one from Google AI Studio and
-put it in `.env`:
+Both are optional and both are off unless you give them a key. Get one from
+Google AI Studio and put it in `.env`:
 
 ```bash
 GEMINI_API_KEY=your-key-here
 ```
 
-Leave it empty and the feature switches *itself* off — the endpoint answers 503
-and every other screen works normally. Nothing else in the system depends on it.
+Leave it empty and both features switch *themselves* off — the endpoints answer
+503 and every other screen works normally. Nothing else in the system depends
+on either of them. One key serves both; there is no second account to set up.
+
+If a question or a scan comes back saying the daily quota is used up, that is
+the free tier's limit and it resets — it is not a fault, and rewording the
+question will not help.
+
+### Invoice intake
 
 **To run it with no network at all**, point it at the recorded readings:
 
@@ -196,6 +213,48 @@ There is also an administrator switch — **Setup → Settings → Invoice scann
 off and the intake routes answer `404`, so a stale tab or a known URL cannot
 keep spending the extraction budget. If the callout has vanished from
 Purchasing and the endpoint 404s, check that switch before checking your key.
+
+### Ask
+
+**Analysis → Ask.** Type a question and get rows back:
+
+```
+Which batches expire in the next 90 days and how many units are in them?
+Which suppliers delivered late, and by how many days on average?
+What proportion of our stock is in the central warehouse versus the branches?
+```
+
+The model's only job is to write one `SELECT`. What protects the database is
+not the prompt — "ignore previous instructions" works often enough that
+treating prompt wording as a control would be negligence — but the fact that
+its output is not trusted either. Whatever it can be talked into proposing has
+to survive four things in order:
+
+1. `ai/ask/safety.py`, which refuses anything that is not a single read. It is
+   string checking, so it is deliberately paranoid: no second statement, no
+   writing CTE, no function that can reach outside the database. (Postgres
+   *nests* block comments, so `SELECT 1 /* /* */ ; DROP TABLE x */` is one
+   statement, not two — the guard is tested against that.)
+2. `EXPLAIN`, so the database itself has agreed the statement is valid before
+   it is run.
+3. A `READ ONLY` transaction under a ten-second statement timeout, capped at
+   200 rows.
+4. Branch scoping — a branch account is held to the same warehouses the rest of
+   the API holds it to, so raw SQL cannot walk around an authorisation rule the
+   ORM enforces.
+
+**A refusal and a question back are answers, not errors.** Ask something the
+database cannot answer — what the forecast predicts, or who owes money — and it
+says so in a sentence rather than returning an empty table, because "no rows"
+reads as *there is nothing to reorder* when the truth is that the figure was
+never stored. Ask something ambiguous and it asks back instead of picking.
+
+Every answer carries the SQL that produced it, one disclosure away, along with
+the assumptions it made — which branch it matched, that it excluded reversals,
+that it counted units because this database records no selling price.
+
+The administrator switch is **Setup → Settings → Ask a question**, enforced the
+same way: off, and `/api/v1/ai/ask` answers `404`.
 
 ### Tests
 
@@ -347,7 +406,26 @@ not the other. That is `stock.view_cost` as a *permission*, not a role.
    the day you seeded, so treat it as an order of magnitude, not a fixture.
 11. **Analysis → Demand forecast.** Every series was backtested before it was
    shown — the table lists the methods that lost.
-12. Resize to a phone. Tables become card lists; the sidebar becomes a drawer.
+12. **Analysis → Ask.** Type *"which batches expire in the next 90 days and how
+    many units are in them?"* and read the answer. Then open **Show the SQL**,
+    which is the part worth showing: the answer is not a sentence the model
+    wrote, it is rows Postgres returned, and the query is right there to
+    disagree with.
+
+    Then ask it something it cannot answer — *"which customers owe us money?"*
+    It declines, and says why: nothing in this database records a payment. The
+    tempting wrong answer was available and plausible — sum `grand_total` over
+    every order — and it names a walk-in customer who paid cash at the counter
+    as a debtor. **Refusing is the feature.** Ask *"how many purchase orders
+    are still not fully received?"* straight after to show it is not simply
+    timid.
+
+    One more, if there is time: *"top 5 selling products by revenue."* It
+    answers in **units** and says in the assumptions that this database holds
+    no selling price. `stock_movements.unit_cost` is what the batch cost us,
+    and ranking sales by it puts the products with the dearest batches on top
+    and calls them best sellers — a large, plausible, entirely wrong number.
+13. Resize to a phone. Tables become card lists; the sidebar becomes a drawer.
 
 ---
 
@@ -358,6 +436,9 @@ api/     FastAPI + SQLAlchemy 2.x + Alembic. app/services/ledger.py is the only 
   app/ai/       Layer 2. Reads the ledger, never writes to it.
   app/ai/intake/  Invoice reading: service (the model call), validate (the checks
                   that make a misread detectable), match (line to catalogue product).
+  app/ai/ask/     Question to rows: schema_context (everything the model is told,
+                  generated from the ORM so it cannot drift), service (the one
+                  model call and the read-only run), safety (what may run at all).
   fixtures/     Six invoices and their recorded readings, for a demo with no network.
   app/seed/     bootstrap.py (demo fixture) and history.py (2 years of synthetic trading).
   app/core/     tunables.py declares every setting once; the API and UI both render from it.

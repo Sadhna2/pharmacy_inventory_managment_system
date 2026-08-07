@@ -1,6 +1,6 @@
 # Final Project Report
 
-**Multi-branch pharmacy inventory management, with AI-assisted invoice intake**
+**Multi-branch pharmacy inventory management, with AI that is never trusted**
 
 ---
 
@@ -48,7 +48,7 @@ original row stays and the balance moves because a second row says so.
 This makes recall tracing a query rather than a feature, makes every balance
 reproducible, and makes "who changed this" always answerable.
 
-### 2.2 The AI feature, and the argument for trusting it
+### 2.2 The AI features, and the argument for trusting them
 
 The mandate was to use AI. The interesting question was how to use it on
 regulated stock data **without** making the system less trustworthy.
@@ -84,10 +84,15 @@ Three further constraints bound it:
 
 ### 2.3 Honesty about what is and is not a model
 
-Five capabilities ship. **One is generative; four are statistics.** They are
+Six capabilities ship. **Two are generative; four are statistics.** They are
 labelled that way in the product. Calling Holt-Winters "AI demand forecasting"
 would be the easy version and a worse one — a reader who discovers the
-exaggeration stops believing the part that genuinely is a model.
+exaggeration stops believing the parts that genuinely are a model.
+
+The two that are: **invoice intake** reads a photograph, and **Ask** turns a
+typed question into one SELECT. Neither is trusted with an answer — one is
+checked against the invoice's own arithmetic, the other returns rows Postgres
+produced from a statement a guard approved.
 
 ---
 
@@ -106,7 +111,7 @@ The code is stratified into three layers, each depending only on those beneath:
 |---|---|
 | **0 — Foundation** | Products, batches, warehouses, the ledger, users, roles, audit |
 | **1 — Operations** | Purchase orders, receipts, sales, shipments, transfers, adjustments, recalls |
-| **2 — Analysis** | Forecasting, exceptions, lead times, replenishment, invoice intake |
+| **2 — Analysis** | Forecasting, exceptions, lead times, replenishment, invoice intake, ask |
 
 **Layer 2 is removable.** Everything it produces is recomputed on request and
 never written back. Deleting `app/ai/` leaves a working inventory system —
@@ -118,10 +123,10 @@ the records it reads.
 | | |
 |---|---|
 | Database | 42 tables, 2 views, 92 foreign keys |
-| API | 96 operations across 71 paths |
+| API | 97 operations across 72 paths |
 | Ledger | ~53,000 movements over two years of synthetic history |
 | Catalogue | 39 products across 4 storage classes and 5 drug schedules |
-| Tests | 392 |
+| Tests | 494 (2,040 cases) |
 
 ### 3.3 Notable decisions
 
@@ -149,7 +154,7 @@ against.
 
 ## 4. Testing
 
-392 automated tests run in CI on every push, against a **real PostgreSQL and a
+494 automated tests run in CI on every push, against a **real PostgreSQL and a
 real HTTP server** — not mocks. The invariants that matter here do not survive
 being mocked: the append-only trigger, the balance projection, and row locking
 under concurrent allocation are all properties of the database.
@@ -165,6 +170,7 @@ under concurrent allocation are all properties of the database.
 | Recall | Freezing and full traceability across branches |
 | Separation of duties | Self-approval refused on orders, transfers and adjustments |
 | Invoice intake | Contract, refusals, branch scoping, and that the off switch closes it |
+| Ask | 102 tests. Chiefly the guard: every shape of statement that must not run, asserted directly against the checker rather than through the model |
 
 ### 4.1 OCR accuracy
 
@@ -221,13 +227,51 @@ three refusals are correct — two ambiguous cotton-roll sizes offered as a
 shortlist, and one brand name the model declines to guess at. Refusing is the
 designed behaviour; the alternative is a confident wrong batch.
 
+### 4.2 Ask accuracy
+
+Measured the only way that means anything for this feature: fifty questions put
+to it against the seeded database, each answer checked against SQL written by
+hand.
+
+**Nothing crashed, and seven answers were wrong.** That ratio is the finding.
+A text-to-SQL feature does not fail loudly — it returns a table, and a table
+looks like an answer. Every one of the seven was a fact about *this* business
+that the schema alone cannot state:
+
+| Question | Wrong answer | Why |
+|---|---|---|
+| Adjustments approved last week | none, always | adjustments never reach `APPROVED`; approving one posts it and lands on `COMPLETED` |
+| Top sellers by revenue | cost of goods, ranked as revenue | `unit_cost` is what the batch cost us; there is no selling price in the ledger |
+| Who owes us money | ₹72,610, including a walk-in who paid cash | no payments table exists; `SUM(grand_total)` is what was ordered, paid or not |
+| Value of stock per branch | ₹96 lakh | fell back to MRP where no batch cost existed — which is four fifths of the rows |
+| Which lots were recalled | none | inner joins through shipments that mostly do not exist |
+| Products below reorder point | 48 | `reorder_point` is chain-wide, not per branch |
+| POs not fully received | 6 | a DRAFT order has not arrived either |
+
+All seven were fixed in the schema briefing — the hand-written half, which
+exists precisely because none of this is expressible as a column type — and
+re-verified. The whole set now answers correctly.
+
+Two findings are worth carrying beyond this project. The first is that **the
+most dangerous output was never an error**: every one of those seven rendered
+as a clean table with a plausible number in it, and only ground truth
+distinguished them. The second is that **more instruction is not monotonically
+better** — a later revision made refusal too easy and broke two questions that
+had been working, which is interference between rules rather than a shortage of
+them.
+
+The gap this leaves is honest: correctness rests on a set of questions the
+authors chose. `tests/golden_questions.py` holds 36 cases with an answer key,
+but nothing scores them in CI yet, so a regression is caught by someone noticing
+rather than by a build. That is the first item in §7.
+
 ---
 
 ## 5. Results
 
-Every functional requirement in the SRS is implemented, with the deliberate
-exception of natural-language reporting (§9 of the SRS), which is designed and
-flagged in the product as not built.
+Every functional requirement in the SRS is implemented. Natural-language
+reporting was the last one outstanding and shipped as **Ask** (FR-ASK); the
+only things named in §9 of the SRS as out of scope remain out of scope.
 
 - The ledger has never produced a balance that disagreed with its movements.
 - Invoice intake reduces receiving a 14-line delivery from manual entry of
@@ -258,6 +302,21 @@ needs connectivity.
 not the trade-name matching pass, so fully offline matching drops from 70/73
 to 56/73.
 
+**Ask has no offline mode and no scored regression test.** Unlike intake there
+are no recorded fixtures, so with no key the feature simply switches off. More
+importantly, its accuracy rests on fifty questions the authors chose and
+checked by hand: `golden_questions.py` has an answer key but nothing runs it as
+a scored eval, so a change to the schema briefing can silently make an answer
+worse. One already did during development — a rule meant to stop the system
+inventing figures it does not hold went too far and began declining two
+questions it could answer — and it was caught by a person asking, not by a
+build.
+
+**Ask is only as truthful as its briefing.** The guard can prove a statement is
+a single read; nothing can prove it answers the question asked. A rule that is
+missing produces a confident wrong number, and the seven found in §4.2 are the
+ones fifty questions happened to reach. There will be others.
+
 **Single instance, no high availability.** One EC2 box, one database, no
 replica. Appropriate to the constraints; not a production posture.
 
@@ -278,7 +337,8 @@ these.
 |---|---|
 | High | Fix the flaky e2e race; record the second model call for offline resilience |
 | High | Use the invoice pack column to resolve remaining ambiguous matches |
-| Medium | Natural-language reporting (designed, flagged as unbuilt) |
+| Medium | Score `golden_questions.py` in CI, so an Ask regression fails a build rather than waiting to be noticed |
+| Medium | Log every question and its SQL, so tuning follows real failures rather than invented ones |
 | Medium | Barcode scanning hardware at receiving and picking |
 | Medium | E-way bill generation; GST return export |
 | Low | Multi-entity and multi-currency |

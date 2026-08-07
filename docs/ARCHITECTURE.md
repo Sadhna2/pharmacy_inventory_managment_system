@@ -1,7 +1,7 @@
 # Architecture
 
-A multi-branch pharmacy inventory system. Three containers, one database, one
-outbound API call. This document describes what runs where and why it is
+A multi-branch pharmacy inventory system. Three containers, one database, and
+outbound calls to a single provider. This document describes what runs where and why it is
 arranged this way.
 
 ---
@@ -16,7 +16,7 @@ flowchart TB
 
     subgraph host["One host · Docker Compose"]
         CADDY["Caddy<br/>static files + reverse proxy<br/>:80 / :443"]
-        API["FastAPI<br/>uvicorn · 96 operations<br/>:8000"]
+        API["FastAPI<br/>uvicorn · 97 operations<br/>:8000"]
         DB[("PostgreSQL 16<br/>append-only ledger<br/>no published port")]
         MIG["migrate<br/>alembic + seed<br/>runs once, exits"]
     end
@@ -28,7 +28,7 @@ flowchart TB
     CADDY -->|"index.html, assets"| SPA
     API -->|"SQLAlchemy 2 · psycopg3"| DB
     MIG -->|"schema + demo data"| DB
-    API -.->|"invoice images only<br/>the one call that leaves"| GEM
+    API -.->|"invoice images and questions<br/>the only calls that leave"| GEM
 
     style GEM stroke-dasharray: 4 4
 ```
@@ -62,7 +62,7 @@ beneath it, and the top one can be deleted without touching the others.
 
 ```mermaid
 flowchart TB
-    L2["<b>Layer 2 — Analysis</b><br/>forecasting · anomalies · lead times<br/>replenishment · invoice intake"]
+    L2["<b>Layer 2 — Analysis</b><br/>forecasting · anomalies · lead times<br/>replenishment · invoice intake · ask"]
     L1["<b>Layer 1 — Operations</b><br/>purchase orders · goods receipts · sales<br/>transfers · adjustments · recalls"]
     L0["<b>Layer 0 — Foundation</b><br/>products · lots · warehouses · the stock ledger<br/>users · roles · permissions · audit"]
 
@@ -146,14 +146,15 @@ name another branch in a payload and have it accepted.
 
 ## 5. The AI layer
 
-Five capabilities. **One is a generative model; four are statistics.** Naming
+Six capabilities. **Two are a generative model; four are statistics.** Naming
 them accurately is deliberate — a reader who discovers that "AI forecasting"
-is exponential smoothing stops believing the rest, including the part that
-genuinely is a model.
+is exponential smoothing stops believing the rest, including the parts that
+genuinely are a model.
 
 | Capability | Method | Gate |
 |---|---|---|
 | Invoice intake | Gemini — vision + language | `features.invoice_ocr` + `grn.create` |
+| Ask a question | Gemini — text to one SELECT | `features.nl_reporting` + `ai.view` |
 | Demand forecast | Holt-Winters exponential smoothing | `features.forecast` + `ai.view` |
 | Exception detection | Thresholds on the ledger | `features.anomaly` + `ai.view` |
 | Replenishment | Reorder point + safety stock | `features.reorder` + `ai.view` |
@@ -207,13 +208,64 @@ wrong number in it, which a person corrects before pressing the button.
 Findings are graded by blast radius: **BLOCK** only when a finding could put
 wrong stock on a shelf, **REVIEW** otherwise.
 
+### How Ask is kept honest
+
+The same rule, applied to a harder surface: here the model's output is a string
+that will be executed against the production database.
+
+```mermaid
+flowchart TB
+    Q["a question in English"] --> BRIEF["schema briefing<br/><i>generated from the ORM metadata</i>"]
+    BRIEF --> GEN["Gemini<br/><i>one SELECT, never an answer</i>"]
+
+    GEN --> GUARD["safety.check_sql"]
+    GUARD -->|"not a single read"| REFUSED["refused unread<br/>200, with the reason"]
+    GUARD -->|"passes"| PLAN["EXPLAIN<br/><i>the database agrees it is valid</i>"]
+
+    PLAN --> RUN["READ ONLY transaction<br/>10s timeout · 200-row cap · branch scope"]
+    RUN --> ROWS["rows from Postgres<br/>+ the SQL that produced them"]
+
+    style GEN stroke-dasharray: 4 4
+    style RUN stroke-width:3px
+```
+
+Prompt wording is **not** treated as a control. "Ignore previous instructions"
+works often enough that relying on it would be negligence, so the defence is
+that the model's output is not trusted either: whatever it can be talked into
+proposing must still survive the guard, plan on the server, and then run as a
+role that cannot write. A successful jailbreak buys the ability to propose a
+`DROP`, which is refused before anything reads it.
+
+Three decisions worth stating, because each rejects a more fashionable one:
+
+- **No retrieval, no vector index.** The whole schema fits in the prompt and is
+  generated from SQLAlchemy metadata at runtime, so the briefing cannot drift
+  from the database the way a hand-written one does after the first migration.
+- **No agent loop.** The familiar text-to-SQL agent explores — runs a query,
+  reads the result, tries another — and every one of those is an unreviewed
+  query against a live database, billed per turn. This is one model call, plus
+  exactly one repair when the database itself says the statement will not plan.
+- **Memory is one turn.** A follow-up carries the previous question and its SQL
+  and nothing older. With more history the model starts dropping a filter set
+  two turns ago and returns a smaller, entirely believable number that nobody
+  questions.
+
+**A refusal and a question back are outcomes, not errors**, and both come back
+as `200` with a reason. Returning them as failures would have every client draw
+them in red beside a stack trace — when declining to guess is the system
+working. The case that matters most: four forecasting tables exist in the
+schema and are permanently empty, because those figures are computed on request
+and never stored. A query against them is valid SQL that returns nothing, and
+"no rows" reads as *there is nothing to reorder*. Ask is told to decline in
+words instead.
+
 ---
 
 ## 6. Deployment
 
 ```mermaid
 flowchart LR
-    PR["pull request"] --> CI["GitHub Actions — CI<br/>ruff · alembic · seed · 392 tests<br/>oxlint · tsc · vite build"]
+    PR["pull request"] --> CI["GitHub Actions — CI<br/>ruff · alembic · seed · 494 tests<br/>oxlint · tsc · vite build"]
     CI -->|"green"| MAIN["merge to main"]
     MAIN --> GATE["Deploy · job 1<br/>calls the same CI workflow<br/>on the exact commit"]
     GATE -->|"green"| BUILD["Deploy · job 2<br/>build arm64 images"]

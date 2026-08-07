@@ -1,7 +1,8 @@
 """Reading a supplier invoice off a photograph.
 
-This is the only place in the system that calls a language model, and the only
-place that makes an outbound network request. Everything it produces is treated
+This is one of two places that call a language model — `ai/ask` is the other,
+and it comes through `_ask_model` below rather than owning a client of its own,
+so every outbound request in the system is made from this file. Everything it produces is treated
 as a *proposal*: `validate.py` checks it against the document's own arithmetic,
 `match.py` resolves it against real products, and a human confirms it before
 anything reaches the ledger. Nothing here writes to the database.
