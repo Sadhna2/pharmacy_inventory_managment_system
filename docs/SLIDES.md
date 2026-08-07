@@ -11,7 +11,7 @@ Speaker notes are in blockquotes and are not meant to be read aloud verbatim.
 
 ### Multi-branch stock, batch-tracked, with AI that is never trusted
 
-Team of 5 · 10 days · FastAPI + React + PostgreSQL on AWS
+Team of 4 · FastAPI + React + PostgreSQL on AWS
 
 > Open on the deployed site, already signed in as Manager.
 
