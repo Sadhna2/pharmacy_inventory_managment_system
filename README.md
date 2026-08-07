@@ -44,7 +44,7 @@ kept because they explain *why* a given line is written the way it is.
 | [Architecture](docs/ARCHITECTURE.md) | System, layer, ledger and deployment diagrams; the request path; the stack |
 | [ER diagram](docs/ER-DIAGRAM.md) | 42 tables in five readable groups, read from a live database |
 | [Project report](docs/PROJECT-REPORT.md) | Problem, solution, implementation, testing, **limitations**, future scope |
-| [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | Review/demo deck, speaker notes in the notes pane. **Built before Ask shipped — [SLIDES.md](docs/SLIDES.md) is the current one** |
+| [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | 21-slide review/demo deck, speaker notes in the notes pane |
 | [Slides — source](docs/SLIDES.md) | The same deck as Markdown, for diffing and editing |
 | [Demo video script](docs/DEMO-VIDEO-SCRIPT.md) | Shot-by-shot script, ~6 minutes, with recovery notes |
 | [Product guide](docs/product-guide/PRODUCT-GUIDE.html) | Screen-by-screen user manual, 26 screenshots inlined — [download it](https://github.com/Sadhna2/pharmacy_inventory_managment_system/raw/main/docs/product-guide/PRODUCT-GUIDE.html) and open it; it needs no network and no other files |
