@@ -2080,6 +2080,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Question
+         * @description Answer one question. Reads; never writes; may refuse, may ask back.
+         *
+         *     ---
+         *
+         *     **Used by:** Analysis → Ask
+         *
+         *     One question in plain English, answered with rows out of this database. The model proposes exactly one SELECT and never writes the answer: `ai/ask/safety.py` decides whether the statement may run, Postgres plans it first, and it executes in a read-only transaction under a statement timeout and a 200-row cap. Refusing a statement and asking a question back are both **200s with a reason**, because declining to guess is an outcome rather than an error — which is why `sql` is on the response even when nothing ran. A branch account is scoped by the same `scoped_warehouse_ids` the rest of the API uses. Gated on `features.nl_reporting` and `ai.view`.
+         */
+        post: operations["ask_question_api_v1_ai_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2325,6 +2351,109 @@ export interface components {
             };
             /** Value At Risk */
             value_at_risk: number;
+        };
+        /** AskIn */
+        AskIn: {
+            /**
+             * Question
+             * @description One question, in ordinary English.
+             */
+            question: string;
+            /** @description Present only when this message is a follow-up. Send the immediately preceding turn and nothing older — a longer history makes the model drop an earlier filter and answer confidently anyway. */
+            previous?: components["schemas"]["PreviousTurnIn"] | null;
+        };
+        /**
+         * AskOut
+         * @description The answer, the refusal or the question back. Always one of the three.
+         */
+        AskOut: {
+            /**
+             * Outcome
+             * @description answer | refuse | clarify. A refusal and a question back are correct outcomes, not errors — a mutation declined and an ambiguity handed back are both successes.
+             */
+            outcome: string;
+            /**
+             * Question
+             * @description The question as it was understood.
+             */
+            question: string;
+            /**
+             * Mode
+             * @description new | refine. How this turn was read against the previous one. Always 'new' when no previous turn was sent.
+             */
+            mode: string;
+            /**
+             * Sql
+             * @description The statement proposed, recorded even when it was refused — a query that was written and then declined is a different fact from one that was never written.
+             */
+            sql?: string | null;
+            /**
+             * Previous Sql
+             * @description The statement this one refined. Sent only on a refine, so the screen can show the two side by side.
+             */
+            previous_sql?: string | null;
+            /**
+             * Explanation
+             * @description What the query does, in plain English rather than a restatement of the SQL.
+             * @default
+             */
+            explanation: string;
+            /**
+             * Assumptions
+             * @description Choices the question left open and the query settled.
+             */
+            assumptions?: string[];
+            /**
+             * Confidence
+             * @description The model's own 0-to-1 reading of its answer. Shown, never acted on: it is a self-report, and a threshold on it would look like a rule and behave like a coin toss.
+             */
+            confidence?: number | null;
+            /**
+             * Clarifying Question
+             * @description Set when the question was handed back instead of answered.
+             */
+            clarifying_question?: string | null;
+            /**
+             * Refusal
+             * @description Why the query was not allowed to run, in words the asker can act on.
+             */
+            refusal?: string | null;
+            /** Columns */
+            columns?: string[];
+            /**
+             * Rows
+             * @description Row-major, in the column order above.
+             */
+            rows?: unknown[][];
+            /**
+             * Row Count
+             * @default 0
+             */
+            row_count: number;
+            /**
+             * Truncated
+             * @description The row cap was reached, so there may be more. A capped list read as a complete one is a wrong answer.
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Elapsed Ms
+             * @description Time in the database. The model's latency is not the asker's.
+             * @default 0
+             */
+            elapsed_ms: number;
+            /**
+             * Chart Hint
+             * @description stat | bar | line | table, decided from the shape and column types of the result rather than by asking a model.
+             * @default table
+             */
+            chart_hint: string;
+            /**
+             * Summary
+             * @description One sentence about the rows that came back — built from them, never from the question.
+             * @default
+             */
+            summary: string;
         };
         /** AuditActorOut */
         AuditActorOut: {
@@ -3617,6 +3746,20 @@ export interface components {
              * @default []
              */
             alternatives: components["schemas"]["AlternativeOut"][];
+        };
+        /**
+         * PreviousTurnIn
+         * @description The previous question and the SQL it produced. The whole of the memory.
+         *
+         *     Both fields or neither. The client sends back what it was given rather than
+         *     the server keeping a conversation, which is what keeps the memory one step
+         *     deep: there is no place for a third turn to accumulate.
+         */
+        PreviousTurnIn: {
+            /** Question */
+            question: string;
+            /** Sql */
+            sql: string;
         };
         /**
          * ProductIn
@@ -8036,6 +8179,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_question_api_v1_ai_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskOut"];
                 };
             };
             /** @description Validation Error */
