@@ -64,10 +64,10 @@ from app.db.base import Base
 #: one was a fact the briefing had not been told (which statuses a stock
 #: adjustment actually reaches, that unit_cost is cost rather than price, that
 #: nothing here records a payment, that a recall trace must be a LEFT JOIN).
-#: Traps 15 to 17 are what that run bought, along with the rolling-window and
+#: Traps 15 to 18 are what that run bought, along with the rolling-window and
 #: best-seller paragraphs a second run asked for. The ceiling is a reminder to
 #: keep the prose dense, not a reason to leave a wrong answer in.
-TOKEN_BUDGET = 8500
+TOKEN_BUDGET = 9000
 
 #: Columns are packed several to a line up to this width. One column per line
 #: is easier to read and costs about two and a half times as much; the packing
@@ -363,6 +363,26 @@ turns a query that runs into a number that lies.
     Their columns and foreign keys are still described above because they are
     really in the schema. Present in the schema is not the same as populated,
     and only this note carries that difference.
+
+    BUT THIS IS ABOUT FOUR TABLES, NOT ABOUT FOUR TOPICS. Refusing too widely
+    here is its own wrong answer, and a likelier one. Before refusing, look for
+    real columns that answer the question — several exist, hold real data, and
+    have nothing to do with the empty tables:
+      * products.reorder_point is a stored number per product. "Which products
+        are below their reorder point" is arithmetic over that column and
+        stock_balances (see the smaller trap about it being chain-wide). ANSWER
+        IT.
+      * "Stock cover", "days of cover", "how long will this last" is on-hand
+        divided by recent demand from stock_movements. ANSWER IT, and say in
+        the assumptions which window you used for the demand.
+      * "What should we buy more of", "what is running out" is the same
+        arithmetic. ANSWER IT.
+    Refuse only when the answer would have to BE a stored prediction: what a
+    forecast run predicted, how accurate a past run turned out, what the
+    recommender proposed and at what urgency. Those were computed and thrown
+    away, so nothing can reconstruct them. Everything a shopkeeper can work out
+    from stock on hand and what has been selling is answerable, and answering
+    it is the point of this feature.
 
 14. NOBODY SAYS A PLACE'S FULL NAME. The warehouses are stored as "Ahmedabad
     Branch", "Bandra Branch (Residential)", "Andheri Branch (Hospital)",

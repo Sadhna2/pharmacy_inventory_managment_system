@@ -20,7 +20,7 @@ produces when nobody asks for better.
 
 WHY THERE IS NO RETRIEVAL AND NO AGENT FRAMEWORK
 ------------------------------------------------
-The whole schema fits in the prompt — `schema_context.TOKEN_BUDGET` is 8500
+The whole schema fits in the prompt — `schema_context.TOKEN_BUDGET` is 9000
 tokens and the briefing is generated from the ORM metadata — so there is
 nothing to retrieve and no vector index to keep in step with the migrations.
 Retrieval here would add a component that can be wrong, to solve a problem this
@@ -307,6 +307,12 @@ WHAT TO PRODUCE
                Nor when only part of the question is unrecorded: if you can
                answer a narrower version, answer it and say in `assumptions`
                what you could not give them.
+
+               Before you fill this in, go back through the table listing and
+               look for a column that answers the question. A refusal is the
+               most expensive thing you can return — the asker cannot rephrase
+               their way out of it — so it has to be about a figure that is
+               genuinely absent, not about a topic that sounds unavailable.
 
 WHEN TO ASK BACK INSTEAD OF ANSWERING
 
