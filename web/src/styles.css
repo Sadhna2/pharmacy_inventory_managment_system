@@ -107,6 +107,40 @@
   }
 
   /*
+   * A column that scrolls, without a groove down the side of it when empty.
+   *
+   * `overflow-y: auto` alone is not enough. With "Show scroll bars: Always" —
+   * the macOS default whenever a mouse is attached — the browser paints the
+   * *track* whether or not there is anything to scroll, so the Ask thread had
+   * a grey line down its right edge on a page with nothing on it, reading as a
+   * stray border rather than as a scrollbar.
+   *
+   * So the track is made transparent and only the thumb carries a colour. It
+   * appears when there is something to scroll and leaves no trace when there
+   * is not, on either scrollbar API.
+   */
+  .scroll-y {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  .scroll-y::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scroll-y::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scroll-y::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+
+  /*
    * Scrollable, but with no visible scrollbar.
    *
    * For the sidebar nav. The rail should read as a fixed panel, not as
@@ -122,6 +156,33 @@
 
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /*
+   * A turn arriving in the Ask thread.
+   *
+   * Small on purpose — six pixels and a fifth of a second. The point is not
+   * decoration: an answer appends to the bottom of a list that is already
+   * scrolled, and without movement there is nothing to tell the eye which part
+   * of the screen is new. Anything larger reads as the page redrawing itself,
+   * which is the opposite of the reassurance it is there to give.
+   *
+   * The reduced-motion block below flattens it to nothing, as it should: for
+   * somebody who gets motion sick, an unexplained slide is worse than no cue.
+   */
+  .rise {
+    animation: rise 200ms cubic-bezier(0.2, 0.6, 0.2, 1) both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 

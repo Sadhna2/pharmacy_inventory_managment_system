@@ -153,13 +153,15 @@ def sync_permissions(db: Session) -> dict[str, Permission]:
     return existing
 
 
-#: Every capability from the brief, including the two that are not built.
+#: Every capability from the brief. Ask was the last one still unbuilt, so all
+#: six now have code behind them.
 #:
-#: The unbuilt ones are rows here rather than absences on purpose: the settings
-#: screen shows them greyed out and labelled, so the system states its own
-#: scope honestly instead of quietly having no menu item. `is_implemented` is
-#: the only thing that decides whether a toggle can be switched on at all, and
-#: it is set from the code, never from the database.
+#: The machinery for an unbuilt capability stays, because it is what keeps that
+#: state honest: one with nothing behind it is a row here rather than an
+#: absence, and the settings screen shows it greyed out and labelled instead of
+#: the system quietly having no menu item for something it promised.
+#: `is_implemented` is the only thing that decides whether a toggle can be
+#: switched on at all, and it is set from the code, never from the database.
 FEATURES: list[tuple[str, str, str, bool]] = [
     (
         "features.reorder",
@@ -193,9 +195,11 @@ FEATURES: list[tuple[str, str, str, bool]] = [
     (
         "features.nl_reporting",
         "Ask a question",
-        "Type an inventory question in plain English and have it fill in the "
-        "filters on the screen it belongs to. Designed, not built.",
-        False,
+        "Type an inventory question in plain English and get rows back from "
+        "this database. The model only proposes one SELECT — code checks it, "
+        "the database plans it, and it runs read-only, capped and timed out. "
+        "Every answer carries the query it came from, so it can be checked.",
+        True,
     ),
     (
         "features.invoice_ocr",

@@ -344,6 +344,20 @@ USED_BY: dict[str, tuple[str, str]] = {
         "because a buyer about to phone a distributor needs the order numbers, "
         "not a score.",
     ),
+    # ---------------------------------------------------- analysis: AI ask
+    "POST /api/v1/ai/ask": (
+        "Analysis → Ask",
+        "One question in plain English, answered with rows out of this "
+        "database. The model proposes exactly one SELECT and never writes the "
+        "answer: `ai/ask/safety.py` decides whether the statement may run, "
+        "Postgres plans it first, and it executes in a read-only transaction "
+        "under a statement timeout and a 200-row cap. Refusing a statement "
+        "and asking a question back are both **200s with a reason**, because "
+        "declining to guess is an outcome rather than an error — which is why "
+        "`sql` is on the response even when nothing ran. A branch account is "
+        "scoped by the same `scoped_warehouse_ids` the rest of the API uses. "
+        "Gated on `features.nl_reporting` and `ai.view`.",
+    ),
     # ------------------------------------------------- analysis: AI intake
     "POST /api/v1/ai/intake/invoice": (
         "Operations → Purchasing → Scan an invoice",
@@ -689,6 +703,15 @@ TAG_GROUPS: list[dict[str, str]] = [
         "description": (
             "**Analysis → Supplier lead times**. Delivery percentiles "
             "measured from your own orders, not quoted by the supplier."
+        ),
+    },
+    {
+        "name": "AI · ask",
+        "description": (
+            "**Analysis → Ask**. A question typed in English, answered with "
+            "rows. The model writes one SELECT and nothing else; a guard, a "
+            "plan, a read-only transaction and a row cap decide whether it "
+            "runs. Reads only."
         ),
     },
     {

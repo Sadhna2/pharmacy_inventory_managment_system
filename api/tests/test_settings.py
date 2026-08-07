@@ -140,9 +140,16 @@ def test_features_are_listed_with_their_build_state(client, admin):
     by_key = {f["key"]: f for f in body["features"]}
     assert "features.anomaly" in by_key
     assert by_key["features.anomaly"]["is_implemented"] is True
-    # The roadmap rows are the point of `is_implemented` — an honest "designed,
-    # not built" beats a menu item that 500s.
-    assert any(not f["is_implemented"] for f in body["features"])
+    # This used to assert that at least one row was still unbuilt, because
+    # `is_implemented` exists so a roadmap item can say "designed, not built"
+    # rather than offer a menu item that 500s. Every shipped flag is now built
+    # — Ask was the last one — so the inventory assertion has become an
+    # assertion that the product is unfinished. What still has to hold is the
+    # contract: every row states its build state, and the guard that a false
+    # one cannot be switched on, which the test below exercises against a row
+    # it creates for the purpose.
+    assert all(isinstance(f["is_implemented"], bool) for f in body["features"])
+    assert body["features"], "the settings screen would have nothing to show"
 
 
 # --- permission boundary ----------------------------------------------------
@@ -304,13 +311,34 @@ def test_reset_clears_numbers_but_leaves_switches_alone(client, admin, snapshot)
 
 
 def test_an_unbuilt_capability_cannot_be_switched_on(client, admin):
-    body = client.get("/api/v1/settings", headers=admin).json()
-    unbuilt = next(f for f in body["features"] if not f["is_implemented"])
-    resp = client.patch(
-        "/api/v1/settings", headers=admin, json={"features": {unbuilt["key"]: True}}
+    """The guard that stands between a roadmap row and a 500 in production.
+
+    The row is created here rather than found in the seed. Everything the
+    application ships is now built, and a test that hunts for an unbuilt flag
+    stops running the moment the last one is finished — silently, as a pass.
+    The next roadmap item added is exactly when this guard matters most.
+    """
+    key = "features.__test_unbuilt"
+    _sql(
+        "INSERT INTO feature_flags "
+        "(key, label, description, category, is_enabled, is_implemented, "
+        " sort_order, updated_at) VALUES "
+        f"('{key}', 'Test only', 'Created by the settings suite.', 'ai', "
+        " false, false, 999, now())"
     )
-    assert resp.status_code == 422
-    assert "not built" in resp.json()["detail"].lower()
+    try:
+        resp = client.patch(
+            "/api/v1/settings", headers=admin, json={"features": {key: True}}
+        )
+        assert resp.status_code == 422
+        assert "not built" in resp.json()["detail"].lower()
+
+        listed = client.get("/api/v1/settings", headers=admin).json()["features"]
+        assert any(
+            f["key"] == key and f["is_implemented"] is False for f in listed
+        ), "an unbuilt capability must still be listed, marked as unbuilt"
+    finally:
+        _sql(f"DELETE FROM feature_flags WHERE key = '{key}'")
 
 
 def test_switching_a_capability_off_closes_its_api(client, admin, manager):

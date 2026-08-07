@@ -29,6 +29,7 @@ import { LeadTimes } from "@/pages/LeadTimes";
 import { Anomalies } from "@/pages/Anomalies";
 import { Forecast } from "@/pages/Forecast";
 import { Reorder } from "@/pages/Reorder";
+import { Ask } from "@/pages/Ask";
 import { MasterData } from "@/pages/MasterData";
 import { Users } from "@/pages/Users";
 import { Settings } from "@/pages/Settings";
@@ -161,6 +162,7 @@ function App() {
         <Route path="exceptions" element={<Anomalies />} />
         <Route path="forecast" element={<Forecast />} />
         <Route path="replenishment" element={<Reorder />} />
+        <Route path="ask" element={<Ask />} />
         <Route path="master-data" element={<MasterData />} />
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />

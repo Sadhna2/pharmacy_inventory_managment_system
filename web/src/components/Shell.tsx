@@ -21,6 +21,7 @@ import {
   ArrowLeftRight,
   Building2,
   ChartSpline,
+  MessagesSquare,
   ClipboardList,
   Cog,
   Layers,
@@ -98,6 +99,10 @@ const NAV: { section: string; items: NavItem[] }[] = [
     // stock, so it all sits behind one permission: ai.view.
     section: "Analysis",
     items: [
+      // First because it is the least specialised: the other four answer a
+      // question somebody already knew to ask. A speech bubble rather than a
+      // sparkle — nothing here is magic, and the icon should not promise it.
+      { to: "/ask", label: "Ask", icon: MessagesSquare, permission: "ai.view", feature: "features.nl_reporting" },
       { to: "/replenishment", label: "Replenishment", icon: RefreshCw, permission: "ai.view", feature: "features.reorder" },
       { to: "/forecast", label: "Demand forecast", icon: ChartSpline, permission: "ai.view", feature: "features.forecast" },
       { to: "/exceptions", label: "Exceptions", icon: Siren, permission: "ai.view", feature: "features.anomaly" },
@@ -563,8 +568,22 @@ export function Shell() {
         </header>
 
         {/* The one scrolling element on the page. */}
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[88rem]">
+        {/*
+          A flex column, and the centring wrapper stretches inside it.
+
+          Every page here flows from the top and stops, so the wrapper's height
+          never mattered — until Ask, which is a chat window: its composer has
+          to sit on the bottom edge whether there is one answer or forty. That
+          needs `h-full` to resolve, and a percentage height resolves against
+          the parent's *height*, which an auto-height wrapper does not have. So
+          the wrapper became a stretched flex item.
+
+          `flex-1` with the default `min-height: auto` still grows past the
+          viewport when a page is taller, so nothing that flows normally
+          changes — only pages that ask for the full height now get it.
+        */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-[88rem] flex-1 flex-col">
             <Outlet />
           </div>
         </main>
