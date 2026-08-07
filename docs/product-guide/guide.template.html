@@ -571,18 +571,19 @@ figcaption { max-width: 42rem; }
     This is inventory software for a <strong>multi-branch pharmacy</strong> — five
     locations, one central warehouse, medicines that expire and are recalled by
     batch. It tracks stock the way a bank tracks money: nothing is ever edited,
-    only added. On top of that history sit four features that read the past to
+    only added. On top of that history sit five features that read the past to
     tell you something useful about the future — what to buy, how much, what
-    looks wrong, and which supplier is actually slow.
+    looks wrong, which supplier is actually slow, and whatever else you think to
+    ask it in plain English.
   </p>
 
   <div class="numbers">
-    <div><b>14</b><span>screens</span></div>
-    <div><b>61</b><span>API endpoints</span></div>
-    <div><b>41</b><span>database tables</span></div>
+    <div><b>18</b><span>screens</span></div>
+    <div><b>97</b><span>API operations</span></div>
+    <div><b>42</b><span>database tables</span></div>
     <div><b>53,013</b><span>stock movements</span></div>
     <div><b>730</b><span>days of history</span></div>
-    <div><b>90</b><span>tests passing</span></div>
+    <div><b>494</b><span>tests passing</span></div>
   </div>
 </header>
 
@@ -683,9 +684,9 @@ figcaption { max-width: 42rem; }
     <div class="arrowdown">&darr;</div>
     <div class="layer l2">
       <h4>Analysis <span class="tag">what it means</span></h4>
-      <p>Four features that only <em>read</em> the history above and never change
-         stock: what to reorder, what demand is coming, what looks wrong, and how
-         slow each supplier really is.</p>
+      <p>Five features that only <em>read</em> the history above and never change
+         stock: what to reorder, what demand is coming, what looks wrong, how
+         slow each supplier really is, and anything you ask it in English.</p>
     </div>
     <div class="arrowdown">&darr;</div>
     <div class="layer">
@@ -720,7 +721,7 @@ figcaption { max-width: 42rem; }
       <thead><tr><th>Account</th><th>Role</th><th>What they can do</th></tr></thead>
       <tbody>
         <tr><td class="mono">admin@pharmacy.co.in</td><td>Administrator</td><td>Everything, including Users, the Audit trail and Settings</td></tr>
-        <tr><td class="mono">manager@pharmacy.co.in</td><td>Manager</td><td>All operations and all four Analysis screens — but not Settings or the audit trail</td></tr>
+        <tr><td class="mono">manager@pharmacy.co.in</td><td>Manager</td><td>All operations and all five Analysis screens — but not Settings or the audit trail</td></tr>
         <tr><td class="mono">staff@pharmacy.co.in</td><td>Counter staff</td><td>Day-to-day stock work, pinned to a single branch, no costs or prices</td></tr>
         <tr><td class="mono">customer@cityhospital.co.in</td><td>Customer</td><td>An institutional buyer's view of their own orders</td></tr>
       </tbody>
@@ -1779,21 +1780,24 @@ figcaption { max-width: 42rem; }
       <div class="frame-bar"><span class="dots"><i></i><i></i><i></i></span><span>/settings &middot; administrators only</span></div>
       <button type="button" data-zoom><img src="{{settings}}" alt="The settings screen, with capability switches at the top and grouped numeric settings for trading hours, replenishment, forecast, exceptions and lead times below" loading="lazy"></button>
     </div>
-    <figcaption>Six capabilities — four live, two not built yet and therefore not switchable — then 21 numbers, each with the reason you would change it.</figcaption>
+    <figcaption>Six capabilities, each with its own switch, then 21 numbers &mdash; each with the reason you would change it. Shot before Ask and invoice scanning had code behind them, which is why two tiles are greyed out here; both are live now.</figcaption>
   </figure>
 
   <h3>Capabilities</h3>
   <p>
-    Each of the four Analysis features has a switch. Turning one off <b>closes its
+    Each of the five Analysis features has a switch. Turning one off <b>closes its
     API as well as hiding its menu item</b> — the endpoint starts answering "this
     feature is switched off" rather than merely disappearing from the navigation.
     That distinction is the whole point: something misbehaving in front of an
     audience has to actually stop.
   </p>
   <p>
-    The two unbuilt features appear here too, marked <span class="pill soon">Not
-    built yet</span> and impossible to switch on. An honest roadmap beats a menu
-    item that fails.
+    All six capabilities from the brief now have code behind them. The machinery
+    for an unbuilt one stays anyway, because it is what keeps that state honest:
+    a capability with nothing behind it appears here greyed out and marked
+    <span class="pill soon">Not built yet</span>, impossible to switch on, rather
+    than quietly having no menu item for something that was promised. Whether a
+    toggle can be turned on at all is decided by the code, never by the database.
   </p>
 
   <h3>The numbers</h3>
@@ -1867,7 +1871,7 @@ figcaption { max-width: 42rem; }
         <tr><td>Create and edit products</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
         <tr><td>Approve orders, transfers, adjustments</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
         <tr><td>See unit cost and stock valuation</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
-        <tr><td>All four Analysis screens</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
+        <tr><td>All five Analysis screens</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
         <tr><td>Start a batch recall</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
         <tr><td>Manage users</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
         <tr><td>Change settings</td><td class="yes">&#10003;</td><td class="no">&mdash;</td><td class="no">&mdash;</td><td class="no">&mdash;</td></tr>
@@ -2237,12 +2241,12 @@ figcaption { max-width: 42rem; }
   </div>
 
   <div class="numbers" style="margin-top:34px">
-    <div><b>15,492</b><span>lines of Python</span></div>
-    <div><b>11,759</b><span>lines of TypeScript</span></div>
-    <div><b>41</b><span>tables</span></div>
-    <div><b>6</b><span>migrations</span></div>
+    <div><b>24,315</b><span>lines of Python</span></div>
+    <div><b>17,379</b><span>lines of TypeScript</span></div>
+    <div><b>42</b><span>tables</span></div>
+    <div><b>10</b><span>migrations</span></div>
     <div><b>28</b><span>permissions</span></div>
-    <div><b>90</b><span>tests</span></div>
+    <div><b>494</b><span>tests</span></div>
   </div>
 </section>
 
