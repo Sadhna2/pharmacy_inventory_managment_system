@@ -1,0 +1,103 @@
+# Publishes the product guide to GitHub Pages.
+#
+# WHY THIS EXISTS
+# ---------------
+# The guide is a single self-contained HTML file with every screenshot inlined,
+# which is the right shape for something you download and keep — but GitHub
+# renders .html as source, so the repository link showed markup rather than a
+# page and the README had to tell people to download a 2 MB file first. Anyone
+# skimming the project on a phone simply did not read it.
+#
+# Pages serves that same file at a URL, so the guide is one click away and the
+# download stays for people who want a copy that works offline. There is no
+# build step and no static-site generator: the file published here is byte for
+# byte the file in the repository, so the two can never drift apart.
+#
+# WHY IT PUBLISHES ONLY docs/product-guide/
+# -----------------------------------------
+# Everything else in docs/ is Markdown that GitHub already renders properly in
+# the repository, where it sits next to the code it describes. Copying it to a
+# second address would only create a second thing to keep current.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/product-guide/PRODUCT-GUIDE.html
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A superseded deploy is worth cancelling; a running one is not, because Pages
+# rejects a second deployment while the first is mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the site
+        run: |
+          set -euo pipefail
+          guide=docs/product-guide/PRODUCT-GUIDE.html
+          test -s "$guide"
+
+          # The guide is a fragment — it opens at <title> and has no <html> or
+          # <body> of its own, because it was written to be embedded. Browsers
+          # will render that in quirks mode, but quirks mode changes the box
+          # model and the layout was built against the standard one. Wrapping
+          # it costs four lines and removes the guesswork.
+          mkdir -p _site
+          {
+            printf '<!doctype html>\n<html lang="en">\n<head>\n'
+            printf '<meta charset="utf-8">\n'
+            printf '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+            cat "$guide"
+            printf '\n</html>\n'
+          } > _site/index.html
+
+          # Keep the original alongside it, so the README's download link can
+          # point here too rather than at raw.githubusercontent.
+          cp "$guide" _site/PRODUCT-GUIDE.html
+
+          # Pages runs Jekyll unless told not to, and Jekyll skips files and
+          # directories beginning with an underscore.
+          touch _site/.nojekyll
+
+          echo "index.html $(wc -c < _site/index.html) bytes"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Check it actually serves
+        run: |
+          set -euo pipefail
+          url="${{ steps.deploy.outputs.page_url }}"
+          echo "published at $url"
+          # Pages can take a moment to route a first-ever deployment.
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /tmp/page.html -w '%{http_code}' -L "$url" || true)
+            [ "$code" = "200" ] && break
+            echo "attempt $i: HTTP $code"
+            sleep 15
+          done
+          [ "$code" = "200" ] || { echo "::error::the published page returned $code"; exit 1; }
+          grep -q "Pharmacy Inventory" /tmp/page.html \
+            || { echo "::error::served a page, but not the guide"; exit 1; }
+          echo "verified: $(wc -c < /tmp/page.html) bytes, title present"

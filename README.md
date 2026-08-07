@@ -47,7 +47,7 @@ kept because they explain *why* a given line is written the way it is.
 | [Slides — PowerPoint](docs/pharmacy-inventory-deck.pptx) | 21-slide review/demo deck, speaker notes in the notes pane |
 | [Slides — source](docs/SLIDES.md) | The same deck as Markdown, for diffing and editing |
 | [Demo video script](docs/DEMO-VIDEO-SCRIPT.md) | Shot-by-shot script, ~6 minutes, with recovery notes |
-| [Product guide](docs/product-guide/PRODUCT-GUIDE.html) | Screen-by-screen user manual, 26 screenshots inlined — [download it](https://github.com/Sadhna2/pharmacy_inventory_managment_system/raw/main/docs/product-guide/PRODUCT-GUIDE.html) and open it; it needs no network and no other files |
+| [Product guide](https://sadhna2.github.io/pharmacy_inventory_managment_system/) | Screen-by-screen user manual, 26 screenshots inlined. **Opens in the browser** — or [download the single file](https://github.com/Sadhna2/pharmacy_inventory_managment_system/raw/main/docs/product-guide/PRODUCT-GUIDE.html) and keep it; it needs no network and no other files |
 
 The diagrams are Mermaid and render directly on GitHub — there are no image
 files to regenerate when the schema changes.
