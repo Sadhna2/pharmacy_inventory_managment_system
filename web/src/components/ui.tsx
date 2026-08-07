@@ -106,6 +106,50 @@ export function Badge({
 }
 
 /**
+ * The mark that says a language model is involved.
+ *
+ * It belongs on exactly two things — Ask and invoice intake — because those are
+ * the two that call one. The demand forecast fits Holt-Winters, replenishment
+ * evaluates a formula and the lead-time analysis takes percentiles over
+ * deliveries that already happened. Putting this badge on any of those would be
+ * the exaggeration the rest of the product is built to avoid, and it would cost
+ * more than it bought: a reader who catches one inflated label stops believing
+ * the two that are real.
+ *
+ * `title` carries which model and what it is permitted to do, because "AI" on
+ * its own is a boast and this is meant to be a label.
+ */
+export function AiBadge({
+  title = "Google Gemini writes the query. It never writes the answer.",
+  className,
+}: {
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full py-0.5 pr-2 pl-1.5",
+        "bg-gradient-to-r from-brand-soft to-info-soft",
+        "text-[10px] font-semibold tracking-[0.09em] text-brand uppercase",
+        "ring-1 ring-brand/20 ring-inset",
+        className,
+      )}
+    >
+      {/* A live dot rather than a sparkle. The nav made the same call and gave
+          Ask a speech bubble: nothing here is magic and the mark should not
+          promise it. This one says "something is running", which is true. */}
+      <span className="relative flex size-1.5 shrink-0">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60 motion-reduce:hidden" />
+        <span className="relative inline-flex size-1.5 rounded-full bg-brand" />
+      </span>
+      AI
+    </span>
+  );
+}
+
+/**
  * Document and stock statuses share one colour language across every screen.
  *
  * Green means finished — nothing further is expected of anyone. That is the

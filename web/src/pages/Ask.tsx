@@ -38,11 +38,14 @@ import {
   Check,
   ChevronRight,
   Copy,
+  Database,
   MessagesSquare,
   Mic,
   RotateCcw,
   Send,
   ShieldAlert,
+  ShieldCheck,
+  Sparkle,
   Split,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -51,6 +54,7 @@ import { useVoice, type VoiceProblem } from "@/lib/useVoice";
 import { PageHeader } from "@/components/Shell";
 import AnswerView, { type ChartHint } from "@/components/AnswerView";
 import {
+  AiBadge,
   Badge,
   Button,
   Card,
@@ -216,8 +220,8 @@ function QueryDetails({ answer }: { answer: AskAnswer }) {
     <details className="group rounded-lg border border-line bg-muted/40">
       <summary
         className={cn(
-          "flex cursor-pointer items-center gap-2 px-3 py-2",
-          "text-[13px] text-ink-soft select-none",
+          "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2",
+          "text-[13px] text-ink-soft transition-colors select-none hover:text-ink",
           // The default disclosure triangle sits outside the padding and lands
           // in a different place in every browser; the chevron below replaces it.
           "list-none [&::-webkit-details-marker]:hidden",
@@ -285,8 +289,8 @@ function Assumptions({ items }: { items: string[] }) {
     <details className="group rounded-lg border border-line bg-muted/40">
       <summary
         className={cn(
-          "flex cursor-pointer items-center gap-2 px-3 py-1.5",
-          "text-[12px] text-ink-soft select-none",
+          "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5",
+          "text-[12px] text-ink-soft transition-colors select-none hover:text-ink",
           "list-none [&::-webkit-details-marker]:hidden",
         )}
       >
@@ -339,7 +343,7 @@ function TurnCard({ answer, number }: { answer: AskAnswer; number: number }) {
           // and a long question ending in an ellipsis is the one thing on this
           // card they cannot look up somewhere else.
           <span className="flex min-w-0 items-start gap-2">
-            <span className="tnum mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-ink-faint">
+            <span className="tnum mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-soft text-[11px] font-semibold text-brand ring-1 ring-brand/15 ring-inset">
               {number}
             </span>
             <span className="min-w-0 break-words">{answer.question}</span>
@@ -428,6 +432,96 @@ function hintTone(listening: boolean, problem: VoiceProblem | null): string {
   if (listening) return "text-brand";
   if (problem && problem.kind !== "unsupported") return "text-warn";
   return "text-ink-faint";
+}
+
+/**
+ * Three questions that fill the box rather than send.
+ *
+ * The four examples that used to sit here were removed for taking most of a
+ * laptop screen to say something a person reads once. These are one compact
+ * row and they load the box instead of submitting, so the first thing anyone
+ * does on this screen is still read a question before asking it — which is the
+ * same rule dictation follows two components down.
+ *
+ * Each one is a question the benchmark covers, so a demo that starts by
+ * clicking one starts on ground that has been checked against hand-written SQL.
+ */
+const OPENERS = [
+  "Which batches expire in the next 90 days?",
+  "What is our stock worth at each branch?",
+  "Which products are below their reorder point?",
+];
+
+/** The three things that happen between pressing Ask and seeing a row. */
+const PIPELINE = [
+  { icon: Sparkle, text: "Writes one SELECT" },
+  { icon: ShieldCheck, text: "Checked, then planned" },
+  { icon: Database, text: "Read-only, capped" },
+];
+
+/**
+ * The screen before anything has been asked.
+ *
+ * It has to do two jobs at once: fill a large empty area without pretending to
+ * be content, and say what this thing is — because "type a question and a
+ * language model writes SQL against production" is not an offer anybody should
+ * accept without being told the shape of it first. So the guarantees are on
+ * the empty screen rather than only in the docs, and they are the same three
+ * the API enforces.
+ */
+function EmptyThread({ onPick }: { onPick: (q: string) => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+      {/* A soft brand wash behind the mark. The icon on its own read as a
+          missing image rather than an empty state. */}
+      <div className="relative mb-5 flex size-14 items-center justify-center">
+        <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-brand-soft to-info-soft" />
+        <span className="absolute inset-0 rounded-2xl ring-1 ring-brand/15 ring-inset" />
+        <MessagesSquare className="relative size-6 text-brand" strokeWidth={1.5} />
+      </div>
+
+      <h2 className="text-[17px] font-semibold tracking-tight text-ink">
+        Ask this database a question
+      </h2>
+      <p className="mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-soft">
+        Stock, batches, orders or suppliers — in plain English. Every answer
+        arrives with the query that produced it, so it can be checked rather
+        than believed.
+      </p>
+
+      <ul className="mt-6 flex max-w-xl flex-wrap justify-center gap-2">
+        {OPENERS.map((q) => (
+          <li key={q}>
+            <button
+              type="button"
+              onClick={() => onPick(q)}
+              className={cn(
+                "rounded-full border border-line bg-surface px-3 py-1.5",
+                "text-[12.5px] text-ink-soft shadow-sm transition-all",
+                "hover:-translate-y-px hover:border-brand/40 hover:text-brand hover:shadow",
+                "focus-visible:ring-2 focus-visible:ring-brand-ring focus-visible:outline-none",
+                "motion-reduce:hover:translate-y-0",
+              )}
+            >
+              {q}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+        {PIPELINE.map(({ icon: Icon, text }, i) => (
+          <span key={text} className="flex items-center gap-2">
+            {i > 0 && (
+              <ChevronRight className="size-3 shrink-0 text-ink-faint/50" aria-hidden />
+            )}
+            <Icon className="size-3.5 shrink-0 text-brand/70" strokeWidth={1.75} />
+            <span className="text-[11.5px] tracking-wide text-ink-faint">{text}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* --------------------------------------------------------------------- page */
@@ -530,6 +624,22 @@ export function Ask() {
     typed.current = "";
   };
 
+  /**
+   * An opener loads the box and puts the cursor in it. It does not send.
+   *
+   * Same rule dictation follows: nothing leaves this screen that the person
+   * has not read. It also means an opener is a starting point rather than a
+   * fixed demo — the caret is already there to edit "90 days" into "30".
+   */
+  const pick = (q: string) => {
+    setQuestion(q);
+    typed.current = q;
+    box.current?.focus();
+  };
+
+  /** Nothing asked, nothing in flight, nothing broken. */
+  const idle = thread.length === 0 && !ask.isPending && !ask.error;
+
   return (
     /*
      * The page owns its height and does not scroll; the thread inside it does.
@@ -545,6 +655,7 @@ export function Ask() {
       <div className="shrink-0">
         <PageHeader
           title="Ask"
+          badge={<AiBadge />}
           description="A question in plain English, answered from this database. The query it wrote is under every answer."
           actions={
             thread.length > 0 && (
@@ -560,19 +671,8 @@ export function Ask() {
       {/* The only scrolling region on the screen. `pr-1` keeps its scrollbar
           off the cards rather than over them. */}
       <div className="scroll-y min-h-0 flex-1 space-y-4 pr-1">
-        {/* Nothing asked yet. One line and an outline mark, centred in the
-            space the thread will fill — the four example questions that used
-            to live here were most of a screen given to something a person
-            reads once and never again. */}
-        {thread.length === 0 && !ask.isPending && !ask.error && (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <MessagesSquare className="size-8 text-ink-faint/50" strokeWidth={1.25} />
-            <p className="max-w-sm text-[13px] leading-relaxed text-ink-faint">
-              Ask about stock, batches, orders or suppliers. Every answer comes
-              with the query that produced it.
-            </p>
-          </div>
-        )}
+        {/* Nothing asked yet. */}
+        {idle && <EmptyThread onPick={pick} />}
 
         {/* Transport failures only. A refusal and a question back arrive as
             successful responses, and neither is drawn like this. */}
@@ -587,7 +687,7 @@ export function Ask() {
             <CardHeader
               title={
                 <span className="flex min-w-0 items-start gap-2">
-                  <span className="tnum mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-ink-faint">
+                  <span className="tnum mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-soft text-[11px] font-semibold text-brand ring-1 ring-brand/15 ring-inset">
                     {thread.length + 1}
                   </span>
                   <span className="min-w-0 break-words">
@@ -596,17 +696,39 @@ export function Ask() {
                 </span>
               }
             />
-            <div className="flex items-center gap-3 px-4 py-5 sm:px-5">
-              <Spinner />
-              <p className="text-[13px] text-ink-soft">
-                Writing a query, checking what it is allowed to read, then
-                running it.
-              </p>
+            {/* The three steps named individually rather than as one
+                sentence. A wait nobody can see inside reads as a hang, and
+                these are the same three the empty screen promised — so the
+                spinner is showing the guarantees being kept. */}
+            <div className="space-y-3 px-4 py-5 sm:px-5">
+              <div className="flex items-center gap-3">
+                <Spinner />
+                <p className="text-[13px] text-ink-soft">
+                  Writing a query, checking what it is allowed to read, then
+                  running it.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pl-8">
+                {PIPELINE.map(({ icon: Icon, text }) => (
+                  <span key={text} className="flex items-center gap-1.5">
+                    <Icon className="size-3 shrink-0 text-brand/60" strokeWidth={1.75} />
+                    <span className="text-[11px] text-ink-faint">{text}</span>
+                  </span>
+                ))}
+              </div>
             </div>
           </Card>
         )}
 
-        <div ref={foot} />
+        {/*
+          The scroll anchor, and only when there is something to scroll to.
+          Rendered unconditionally it was a second child of a `space-y-4`
+          parent, so an empty screen carried a `h-full` panel plus 16px of
+          margin plus this — sixteen pixels taller than the box that held it,
+          which is why a screen with nothing on it still had a scrollbar down
+          the side of it.
+        */}
+        {!idle && <div ref={foot} />}
       </div>
 
       {/*
@@ -623,8 +745,9 @@ export function Ask() {
         <div
           className={cn(
             "flex items-end gap-2 rounded-xl border border-line bg-surface p-2",
-            "shadow-sm transition-shadow",
-            "focus-within:border-brand/60 focus-within:ring-2 focus-within:ring-brand-ring",
+            "shadow-sm transition-all duration-150",
+            "hover:border-line-strong",
+            "focus-within:border-brand/60 focus-within:shadow-md focus-within:ring-2 focus-within:ring-brand-ring",
           )}
         >
           <Textarea

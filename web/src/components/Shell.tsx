@@ -60,6 +60,14 @@ interface NavItem {
    * screen that would immediately fail.
    */
   feature?: string;
+
+  /**
+   * Marks a screen whose work is done by a language model, so the rail can say
+   * so. True for Ask and nothing else in this list — the rest of the Analysis
+   * section is statistics, and a badge that appears on all five would stop
+   * meaning anything.
+   */
+  ai?: boolean;
 }
 
 const NAV: { section: string; items: NavItem[] }[] = [
@@ -102,7 +110,10 @@ const NAV: { section: string; items: NavItem[] }[] = [
       // First because it is the least specialised: the other four answer a
       // question somebody already knew to ask. A speech bubble rather than a
       // sparkle — nothing here is magic, and the icon should not promise it.
-      { to: "/ask", label: "Ask", icon: MessagesSquare, permission: "ai.view", feature: "features.nl_reporting" },
+      // `ai` marks the rows that call a language model, and only those. Ask is
+      // the one in this section; the other four are statistics and labelling
+      // them otherwise is how a reader stops trusting the label entirely.
+      { to: "/ask", label: "Ask", icon: MessagesSquare, permission: "ai.view", feature: "features.nl_reporting", ai: true },
       { to: "/replenishment", label: "Replenishment", icon: RefreshCw, permission: "ai.view", feature: "features.reorder" },
       { to: "/forecast", label: "Demand forecast", icon: ChartSpline, permission: "ai.view", feature: "features.forecast" },
       { to: "/exceptions", label: "Exceptions", icon: Siren, permission: "ai.view", feature: "features.anomaly" },
@@ -274,7 +285,7 @@ function NavLinks({
                   its own padding, so the 2px was invisible and cost 32px of
                   rail across seventeen items. */}
             <ul className={cn(collapsed ? "space-y-1" : "")}>
-              {visible.map(({ to, label, icon: Icon }) => (
+              {visible.map(({ to, label, icon: Icon, ai }) => (
                 <li key={to}>
                   <NavLink
                     to={to}
@@ -296,6 +307,21 @@ function NavLinks({
                   >
                     <Icon className="size-4 shrink-0" />
                     {!collapsed && <span className="truncate">{label}</span>}
+                    {/* Only when the rail is open. Collapsed, the row is a
+                        40px square holding one icon, and a second mark in it
+                        would read as a state rather than a label. */}
+                    {!collapsed && ai && (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "ml-auto shrink-0 rounded-full px-1.5 py-px",
+                          "text-[9px] font-semibold tracking-[0.09em] uppercase",
+                          "bg-brand/10 text-brand ring-1 ring-brand/20 ring-inset",
+                        )}
+                      >
+                        AI
+                      </span>
+                    )}
                   </NavLink>
                 </li>
               ))}
@@ -595,17 +621,21 @@ export function Shell() {
 export function PageHeader({
   title,
   description,
+  badge,
   actions,
 }: {
   title: string;
   description?: string;
+  /** Sits beside the title. For a capability label, not for a status. */
+  badge?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-[22px]">
+        <h1 className="flex flex-wrap items-center gap-2.5 text-xl font-semibold tracking-tight text-ink sm:text-[22px]">
           {title}
+          {badge}
         </h1>
         {description && (
           <p className="mt-1 text-[13px] text-ink-soft sm:text-sm">{description}</p>
