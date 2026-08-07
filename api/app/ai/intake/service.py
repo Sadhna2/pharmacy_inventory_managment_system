@@ -419,7 +419,17 @@ def _request(body: dict) -> dict:
             # 429 is the per-minute quota and 5xx is transient; both are worth
             # one more try. A 4xx is a bad request and retrying cannot fix it.
             if response.status_code in (429, 500, 502, 503, 504):
-                last = f"the extraction service returned {response.status_code}"
+                # A quota is not a fault, and it is the one failure here that
+                # the person reading it can act on: wait, then ask again. Said
+                # as "the extraction service returned 429" it reads as the
+                # server being broken, and somebody rewrites a question that
+                # was never the problem.
+                last = (
+                    "the daily quota for the AI model has been used up — "
+                    "it resets, so this will work again shortly"
+                    if response.status_code == 429
+                    else f"the extraction service returned {response.status_code}"
+                )
                 log.warning("intake.retryable", attempt=attempt,
                             status=response.status_code)
             elif response.is_error:
