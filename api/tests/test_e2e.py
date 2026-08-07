@@ -674,7 +674,21 @@ def test_cancel_releases_reservation(client, manager, ids):
 
 
 def test_transfer_shows_in_transit_then_lands(client, manager, ids):
-    """Stock on a truck must stay visible, not vanish."""
+    """Stock on a truck must stay visible, not vanish.
+
+    Measured as a delta, not as an absolute. This asserted `== 20` and passed
+    for months, because no seeded transfer happened to be mid-flight for this
+    product at this branch. The seeded history generates two years of trading
+    up to *today*, so it re-rolls every day — and on a day when it left 968
+    syringes on the road, a test about a transfer this test made itself failed
+    on stock it had nothing to do with. What the test is actually about is the
+    twenty units it dispatched: that they appear at the destination while in
+    flight, and convert to available on arrival.
+    """
+    on_the_road = qty_at(
+        client, manager, ids["syringe"], ids["branch"], status="IN_TRANSIT"
+    )
+
     transfer = client.post(
         "/api/v1/transfers",
         headers=manager,
@@ -692,14 +706,19 @@ def test_transfer_shows_in_transit_then_lands(client, manager, ids):
     in_transit = qty_at(
         client, manager, ids["syringe"], ids["branch"], status="IN_TRANSIT"
     )
-    assert in_transit == 20, "dispatched stock must be visible as IN_TRANSIT"
+    assert in_transit == on_the_road + 20, (
+        "dispatched stock must be visible as IN_TRANSIT"
+    )
 
     available_before = qty_at(client, manager, ids["syringe"], ids["branch"])
     received = client.post(f"/api/v1/transfers/{tid}/receive", headers=manager)
     assert received.status_code == 200
     assert received.json()["status"] == "COMPLETED"
 
-    assert qty_at(client, manager, ids["syringe"], ids["branch"], "IN_TRANSIT") == 0
+    assert (
+        qty_at(client, manager, ids["syringe"], ids["branch"], "IN_TRANSIT")
+        == on_the_road
+    ), "arriving must clear this transfer's in-transit rows and no others"
     assert qty_at(client, manager, ids["syringe"], ids["branch"]) == (
         available_before + 20
     )
