@@ -443,13 +443,19 @@ function hintTone(listening: boolean, problem: VoiceProblem | null): string {
  * does on this screen is still read a question before asking it — which is the
  * same rule dictation follows two components down.
  *
- * Each one is a question the benchmark covers, so a demo that starts by
- * clicking one starts on ground that has been checked against hand-written SQL.
+ * All three were run against this database before being put here, and each was
+ * chosen for returning rows. That is not a detail: the first version of this
+ * list shipped "what is our stock worth at each branch", which the benchmark
+ * had already caught answering ₹96 lakh where the rest of the product says
+ * ₹72 lakh, and "which products are below their reorder point", which is a
+ * fair question that currently matches nothing. A suggestion that returns an
+ * empty table is worse than no suggestion, because the person clicked it on
+ * our recommendation and now doubts the feature rather than the seed data.
  */
 const OPENERS = [
   "Which batches expire in the next 90 days?",
-  "What is our stock worth at each branch?",
-  "Which products are below their reorder point?",
+  "Which branches are holding expired stock?",
+  "Which products haven't sold in the last 90 days?",
 ];
 
 /** The three things that happen between pressing Ask and seeing a row. */
